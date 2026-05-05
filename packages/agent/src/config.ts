@@ -1,0 +1,108 @@
+import { z } from 'zod';
+import { boolFlag } from '@agentify/shared';
+
+const ConfigSchema = z.object({
+  port: z.coerce.number().int().positive().default(8080),
+  host: z.string().default('0.0.0.0'),
+  soulPath: z.string().default('/etc/agentify/SOUL.md'),
+  // Reject single quotes — the credential helper command interpolates this
+  // path inside a shell-single-quoted string, and a quote in the path would
+  // break the helper at runtime in confusing ways.
+  workspacesDir: z
+    .string()
+    .refine((s) => !s.includes("'"), "WORKSPACES_DIR must not contain single quotes")
+    .default('/workspaces'),
+  logLevel: z
+    .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
+    .default('info'),
+
+  coordinatorUrl: z.string().url(),
+  agentPublicUrl: z.string().url(),
+
+  registerRetryMs: z.coerce.number().int().positive().default(2000),
+  registerMaxAttempts: z.coerce.number().int().positive().default(60),
+  heartbeatIntervalMs: z.coerce.number().int().positive().default(15000),
+
+  /** HTTP timeout for the agent's calls to the coordinator. */
+  coordinatorTimeoutMs: z.coerce.number().int().positive().default(15000),
+
+  /** Cap for the in-memory `AgentState.jobs` map (LRU). */
+  jobHistoryCapacity: z.coerce.number().int().positive().default(500),
+
+  /**
+   * Hard cap on Claude Agent SDK turns per skill run. A "turn" is one
+   * model→tool round-trip; a typical implement that walks the repo, edits a
+   * few files, runs tests, and pushes a PR can spend 50–150 turns. Default
+   * of 60 was hitting the cap on real plan/implement runs. 500 leaves
+   * generous headroom while still bounding runaway loops.
+   */
+  claudeMaxTurns: z.coerce.number().int().positive().default(500),
+
+  /** SDK call timeout. 0 disables. */
+  claudeTimeoutMs: z.coerce.number().int().nonnegative().default(15 * 60 * 1000),
+
+  // Required when disableGithub=false; checked in the superRefine below so
+  // the agent can boot offline (DISABLE_GITHUB=true) without dummy values.
+  githubAppId: z.string().optional(),
+  githubAppPrivateKey: z.string().optional(),
+  githubAppInstallationId: z.string().optional(),
+  githubUser: z.string().optional(),
+
+  anthropicApiKey: z.string().min(1).optional(),
+
+  /**
+   * Disable real GitHub side effects (label flips, comments). The runner logs
+   * what it would have done. Useful for tests and the StubClaudeAdapter path.
+   */
+  disableGithub: boolFlag(false),
+
+  /**
+   * Force the Claude adapter selection. `auto` picks Live when
+   * ANTHROPIC_API_KEY is set, otherwise Stub.
+   */
+  claudeAdapter: z.enum(['auto', 'live', 'stub']).default('auto'),
+}).superRefine((cfg, ctx) => {
+  if (cfg.disableGithub) return;
+  for (const key of [
+    'githubAppId',
+    'githubAppPrivateKey',
+    'githubAppInstallationId',
+    'githubUser',
+  ] as const) {
+    if (!cfg[key] || cfg[key].length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `${key} is required unless DISABLE_GITHUB=true`,
+      });
+    }
+  }
+});
+
+export type Config = z.infer<typeof ConfigSchema>;
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  return ConfigSchema.parse({
+    port: env.AGENT_PORT ?? env.PORT,
+    host: env.HOST,
+    soulPath: env.SOUL_PATH,
+    workspacesDir: env.WORKSPACES_DIR,
+    logLevel: env.LOG_LEVEL,
+    coordinatorUrl: env.COORDINATOR_URL,
+    agentPublicUrl: env.AGENT_PUBLIC_URL,
+    registerRetryMs: env.REGISTER_RETRY_MS,
+    registerMaxAttempts: env.REGISTER_MAX_ATTEMPTS,
+    heartbeatIntervalMs: env.HEARTBEAT_INTERVAL_MS,
+    coordinatorTimeoutMs: env.COORDINATOR_TIMEOUT_MS,
+    jobHistoryCapacity: env.JOB_HISTORY_CAPACITY,
+    claudeMaxTurns: env.CLAUDE_MAX_TURNS,
+    claudeTimeoutMs: env.CLAUDE_TIMEOUT_MS,
+    githubAppId: env.GITHUB_APP_ID,
+    githubAppPrivateKey: env.GITHUB_APP_PRIVATE_KEY,
+    githubAppInstallationId: env.GITHUB_APP_INSTALLATION_ID,
+    githubUser: env.GITHUB_USER,
+    anthropicApiKey: env.ANTHROPIC_API_KEY,
+    disableGithub: env.DISABLE_GITHUB,
+    claudeAdapter: env.CLAUDE_ADAPTER,
+  });
+}

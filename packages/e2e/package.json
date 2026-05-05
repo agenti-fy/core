@@ -1,0 +1,29 @@
+{
+  "name": "@agentify/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/run.js",
+  "bin": {
+    "agentify-e2e": "./dist/run.js",
+    "agentify-doctor": "./dist/doctor.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "doctor": "node dist/doctor.js",
+    "test:e2e": "node dist/run.js"
+  },
+  "dependencies": {
+    "@agentify/shared": "workspace:*",
+    "@octokit/auth-app": "^7.1.4",
+    "@octokit/rest": "^21.0.2",
+    "undici": "^7.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.7.2"
+  }
+}

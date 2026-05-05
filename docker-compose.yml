@@ -1,0 +1,313 @@
+# Coordinator + nine built-in personas + an optional monitoring profile.
+#
+# Every tunable from packages/{coordinator,agent}/src/config.ts is exposed as
+# a ${VAR:-default} substitution so operators can control behavior from a .env
+# file without editing this file. Anchors below dedupe the per-agent block —
+# see `x-agent-env` and `x-agent-defaults`.
+#
+# Bring up the production fleet:
+#   docker compose up -d --build
+#
+# Bring up + monitoring (Prometheus + Grafana):
+#   docker compose --profile monitoring up -d --build
+
+x-agent-env: &agent-env
+  # GitHub App credentials are SET PER-AGENT in each service's `environment:`
+  # block — every persona uses its own App so commits, comments, and reviews
+  # appear under that persona's bot identity (e.g. agenti-fy-tinkerer[bot]).
+  # The coordinator uses the global GITHUB_APP_* values for read-only polling.
+
+  # Anthropic.
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  CLAUDE_ADAPTER: ${CLAUDE_ADAPTER:-auto}
+  CLAUDE_MAX_TURNS: ${CLAUDE_MAX_TURNS:-60}
+  CLAUDE_TIMEOUT_MS: ${CLAUDE_TIMEOUT_MS:-900000}
+
+  # Where to find the coordinator.
+  COORDINATOR_URL: ${COORDINATOR_URL:-http://coordinator:8080}
+  COORDINATOR_TIMEOUT_MS: ${COORDINATOR_TIMEOUT_MS:-15000}
+
+  # Boot retry + heartbeat cadence.
+  REGISTER_RETRY_MS: ${REGISTER_RETRY_MS:-2000}
+  REGISTER_MAX_ATTEMPTS: ${REGISTER_MAX_ATTEMPTS:-60}
+  HEARTBEAT_INTERVAL_MS: ${HEARTBEAT_INTERVAL_MS:-15000}
+
+  # Agent-local state.
+  SOUL_PATH: ${SOUL_PATH:-/etc/agentify/SOUL.md}
+  WORKSPACES_DIR: ${WORKSPACES_DIR:-/workspaces}
+  JOB_HISTORY_CAPACITY: ${JOB_HISTORY_CAPACITY:-500}
+
+  # Logging.
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  # Offline-dev escape hatch — accepts 1/true/yes/on (true) or
+  # 0/false/no/off/empty (false). Anything else falls back to false.
+  DISABLE_GITHUB: ${DISABLE_GITHUB:-false}
+
+x-agent-defaults: &agent-defaults
+  image: agentify/agent:0.1.0
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        memory: ${AGENT_MEMORY_LIMIT:-1024M}
+  healthcheck:
+    test: ["CMD", "node", "-e", "fetch('http://localhost:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    interval: 15s
+    timeout: 5s
+    retries: 3
+    start_period: 20s
+  depends_on:
+    coordinator:
+      condition: service_healthy
+
+services:
+  coordinator:
+    build:
+      context: .
+      dockerfile: packages/coordinator/Dockerfile
+    image: agentify/coordinator:0.1.0
+    restart: unless-stopped
+    environment:
+      # GitHub App.
+      GITHUB_APP_ID: ${GITHUB_APP_ID}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
+      GITHUB_APP_INSTALLATION_ID: ${GITHUB_APP_INSTALLATION_ID}
+      GITHUB_USER: ${GITHUB_USER}
+
+      # HTTP server.
+      PORT: ${COORDINATOR_PORT:-8080}
+      HOST: ${COORDINATOR_HOST:-0.0.0.0}
+
+      # State.
+      DATA_DIR: ${DATA_DIR:-/data}
+
+      # Polling + dispatch loops.
+      DEFAULT_POLL_INTERVAL_S: ${DEFAULT_POLL_INTERVAL_S:-30}
+      WORK_POLL_S: ${WORK_POLL_S:-30}
+      JOB_COMPLETION_POLL_S: ${JOB_COMPLETION_POLL_S:-5}
+      INSTALLATION_REFRESH_S: ${INSTALLATION_REFRESH_S:-300}
+
+      # Stuck-issue rescue.
+      STALE_JOB_TIMEOUT_S: ${STALE_JOB_TIMEOUT_S:-1800}
+      STALE_JOB_SWEEP_S: ${STALE_JOB_SWEEP_S:-600}
+
+      # Job-row GC retention.
+      FAILED_DISPATCH_RETENTION_DAYS: ${FAILED_DISPATCH_RETENTION_DAYS:-7}
+      COMPLETED_JOB_RETENTION_DAYS: ${COMPLETED_JOB_RETENTION_DAYS:-30}
+
+      # Logging.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      DISABLE_GITHUB: ${DISABLE_GITHUB:-false}
+    volumes:
+      - coordinator-data:/data
+    ports:
+      - "${COORDINATOR_HOST_PORT:-8080}:8080"
+    deploy:
+      resources:
+        limits:
+          memory: ${COORDINATOR_MEMORY_LIMIT:-512M}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # The first agent service carries the build: stanza; the rest reuse the
+  # resulting agentify/agent:0.1.0 image via the *agent-defaults anchor.
+  # Routing requires one container per built-in persona — different methods
+  # are handled by different personas (planner ≠ implementer ≠ reviewer ≠ …).
+  orchestrator:
+    <<: *agent-defaults
+    build:
+      context: .
+      dockerfile: packages/agent/Dockerfile
+    environment:
+      <<: *agent-env
+      AGENT_PUBLIC_URL: ${ORCHESTRATOR_PUBLIC_URL:-http://orchestrator:8080}
+      GITHUB_APP_ID: ${ORCHESTRATOR_GITHUB_APP_ID}
+      GITHUB_APP_INSTALLATION_ID: ${ORCHESTRATOR_GITHUB_APP_INSTALLATION_ID}
+      GITHUB_APP_PRIVATE_KEY: ${ORCHESTRATOR_GITHUB_APP_PRIVATE_KEY}
+      GITHUB_USER: ${ORCHESTRATOR_GITHUB_USER}
+    volumes:
+      - ./souls/orchestrator.md:/etc/agentify/SOUL.md:ro
+      - orchestrator-workspace:/workspaces
+      # Persist the Claude Code SDK's conversation store across container
+      # recreates. Without this, every `docker compose up` invalidates every
+      # cached session_id and the next dispatch hits "No conversation found".
+      - orchestrator-claude:/app/.claude
+
+  conductor:
+    <<: *agent-defaults
+    environment:
+      <<: *agent-env
+      AGENT_PUBLIC_URL: ${CONDUCTOR_PUBLIC_URL:-http://conductor:8080}
+      GITHUB_APP_ID: ${CONDUCTOR_GITHUB_APP_ID}
+      GITHUB_APP_INSTALLATION_ID: ${CONDUCTOR_GITHUB_APP_INSTALLATION_ID}
+      GITHUB_APP_PRIVATE_KEY: ${CONDUCTOR_GITHUB_APP_PRIVATE_KEY}
+      GITHUB_USER: ${CONDUCTOR_GITHUB_USER}
+    volumes:
+      - ./souls/conductor.md:/etc/agentify/SOUL.md:ro
+      - conductor-workspace:/workspaces
+      - conductor-claude:/app/.claude
+
+  theorist:
+    <<: *agent-defaults
+    environment:
+      <<: *agent-env
+      AGENT_PUBLIC_URL: ${THEORIST_PUBLIC_URL:-http://theorist:8080}
+      GITHUB_APP_ID: ${THEORIST_GITHUB_APP_ID}
+      GITHUB_APP_INSTALLATION_ID: ${THEORIST_GITHUB_APP_INSTALLATION_ID}
+      GITHUB_APP_PRIVATE_KEY: ${THEORIST_GITHUB_APP_PRIVATE_KEY}
+      GITHUB_USER: ${THEORIST_GITHUB_USER}
+    volumes:
+      - ./souls/theorist.md:/etc/agentify/SOUL.md:ro
+      - theorist-workspace:/workspaces
+      - theorist-claude:/app/.claude
+
+  tinkerer:
+    <<: *agent-defaults
+    environment:
+      <<: *agent-env
+      AGENT_PUBLIC_URL: ${TINKERER_PUBLIC_URL:-http://tinkerer:8080}
+      GITHUB_APP_ID: ${TINKERER_GITHUB_APP_ID}
+      GITHUB_APP_INSTALLATION_ID: ${TINKERER_GITHUB_APP_INSTALLATION_ID}
+      GITHUB_APP_PRIVATE_KEY: ${TINKERER_GITHUB_APP_PRIVATE_KEY}
+      GITHUB_USER: ${TINKERER_GITHUB_USER}
+    volumes:
+      - ./souls/tinkerer.md:/etc/agentify/SOUL.md:ro
+      - tinkerer-workspace:/workspaces
+      - tinkerer-claude:/app/.claude
+
+  optimizer:
+    <<: *agent-defaults
+    environment:
+      <<: *agent-env
+      AGENT_PUBLIC_URL: ${OPTIMIZER_PUBLIC_URL:-http://optimizer:8080}
+      GITHUB_APP_ID: ${OPTIMIZER_GITHUB_APP_ID}
+      GITHUB_APP_INSTALLATION_ID: ${OPTIMIZER_GITHUB_APP_INSTALLATION_ID}
+      GITHUB_APP_PRIVATE_KEY: ${OPTIMIZER_GITHUB_APP_PRIVATE_KEY}
+      GITHUB_USER: ${OPTIMIZER_GITHUB_USER}
+    volumes:
+      - ./souls/optimizer.md:/etc/agentify/SOUL.md:ro
+      - optimizer-workspace:/workspaces
+      - optimizer-claude:/app/.claude
+
+  glue:
+    <<: *agent-defaults
+    environment:
+      <<: *agent-env
+      AGENT_PUBLIC_URL: ${GLUE_PUBLIC_URL:-http://glue:8080}
+      GITHUB_APP_ID: ${GLUE_GITHUB_APP_ID}
+      GITHUB_APP_INSTALLATION_ID: ${GLUE_GITHUB_APP_INSTALLATION_ID}
+      GITHUB_APP_PRIVATE_KEY: ${GLUE_GITHUB_APP_PRIVATE_KEY}
+      GITHUB_USER: ${GLUE_GITHUB_USER}
+    volumes:
+      - ./souls/glue.md:/etc/agentify/SOUL.md:ro
+      - glue-workspace:/workspaces
+      - glue-claude:/app/.claude
+
+  skeptic:
+    <<: *agent-defaults
+    environment:
+      <<: *agent-env
+      AGENT_PUBLIC_URL: ${SKEPTIC_PUBLIC_URL:-http://skeptic:8080}
+      GITHUB_APP_ID: ${SKEPTIC_GITHUB_APP_ID}
+      GITHUB_APP_INSTALLATION_ID: ${SKEPTIC_GITHUB_APP_INSTALLATION_ID}
+      GITHUB_APP_PRIVATE_KEY: ${SKEPTIC_GITHUB_APP_PRIVATE_KEY}
+      GITHUB_USER: ${SKEPTIC_GITHUB_USER}
+    volumes:
+      - ./souls/skeptic.md:/etc/agentify/SOUL.md:ro
+      - skeptic-workspace:/workspaces
+      - skeptic-claude:/app/.claude
+
+  crafter:
+    <<: *agent-defaults
+    environment:
+      <<: *agent-env
+      AGENT_PUBLIC_URL: ${CRAFTER_PUBLIC_URL:-http://crafter:8080}
+      GITHUB_APP_ID: ${CRAFTER_GITHUB_APP_ID}
+      GITHUB_APP_INSTALLATION_ID: ${CRAFTER_GITHUB_APP_INSTALLATION_ID}
+      GITHUB_APP_PRIVATE_KEY: ${CRAFTER_GITHUB_APP_PRIVATE_KEY}
+      GITHUB_USER: ${CRAFTER_GITHUB_USER}
+    volumes:
+      - ./souls/crafter.md:/etc/agentify/SOUL.md:ro
+      - crafter-workspace:/workspaces
+      - crafter-claude:/app/.claude
+
+  scribe:
+    <<: *agent-defaults
+    environment:
+      <<: *agent-env
+      AGENT_PUBLIC_URL: ${SCRIBE_PUBLIC_URL:-http://scribe:8080}
+      GITHUB_APP_ID: ${SCRIBE_GITHUB_APP_ID}
+      GITHUB_APP_INSTALLATION_ID: ${SCRIBE_GITHUB_APP_INSTALLATION_ID}
+      GITHUB_APP_PRIVATE_KEY: ${SCRIBE_GITHUB_APP_PRIVATE_KEY}
+      GITHUB_USER: ${SCRIBE_GITHUB_USER}
+    volumes:
+      - ./souls/scribe.md:/etc/agentify/SOUL.md:ro
+      - scribe-workspace:/workspaces
+      - scribe-claude:/app/.claude
+
+  # ─── Optional monitoring stack ────────────────────────────────────────────
+  # Enable with `--profile monitoring`. Scrapes /metrics from coordinator and
+  # every agent. Same shape as the previous implementation's stack — the only
+  # difference is what's being scraped.
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    profiles:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+volumes:
+  coordinator-data:
+  orchestrator-workspace:
+  conductor-workspace:
+  theorist-workspace:
+  tinkerer-workspace:
+  optimizer-workspace:
+  glue-workspace:
+  skeptic-workspace:
+  crafter-workspace:
+  scribe-workspace:
+  # Persisted Claude Code SDK conversation stores (one per persona) so
+  # session_ids cached in the coordinator stay valid across `docker compose
+  # up` recreates.
+  orchestrator-claude:
+  conductor-claude:
+  theorist-claude:
+  tinkerer-claude:
+  optimizer-claude:
+  glue-claude:
+  skeptic-claude:
+  crafter-claude:
+  scribe-claude:
+  prometheus-data:
+  grafana-data:

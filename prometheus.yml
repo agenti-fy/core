@@ -1,0 +1,30 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'agentify-monitor'
+
+scrape_configs:
+  - job_name: 'coordinator'
+    static_configs:
+      - targets: ['coordinator:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Each agent exposes its own /metrics on port 8080 inside the compose network.
+  # The default-label `persona` baked into agent metrics distinguishes them in
+  # queries (e.g. agentify_jobs_total{persona="tinkerer"}).
+  - job_name: 'agents'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    static_configs:
+      - targets:
+          - 'orchestrator:8080'
+          - 'conductor:8080'
+          - 'theorist:8080'
+          - 'tinkerer:8080'
+          - 'optimizer:8080'
+          - 'glue:8080'
+          - 'skeptic:8080'
+          - 'crafter:8080'
+          - 'scribe:8080'

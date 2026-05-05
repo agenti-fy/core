@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/coordinator" },
+    { "path": "./packages/agent" },
+    { "path": "./packages/tui" },
+    { "path": "./packages/e2e" }
+  ]
+}

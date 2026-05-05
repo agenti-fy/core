@@ -1,0 +1,38 @@
+{
+  "name": "agenti-fy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-agent software development system. Coordinator + agent containers driven by the Claude Code SDK.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@10.20.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e:doctor": "pnpm --filter @agentify/e2e doctor",
+    "e2e:run": "pnpm --filter @agentify/e2e test:e2e",
+    "clean": "pnpm -r exec rm -rf dist node_modules/.cache && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@vitest/coverage-v8": "^2.1.5",
+    "eslint": "^9.15.0",
+    "@eslint/js": "^9.15.0",
+    "typescript-eslint": "^8.15.0",
+    "prettier": "^3.4.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3"]
+  }
+}

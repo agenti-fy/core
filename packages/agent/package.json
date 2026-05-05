@@ -1,0 +1,37 @@
+{
+  "name": "@agentify/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "agentify-agent": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && pnpm copy-assets",
+    "copy-assets": "mkdir -p dist/skills/defaults dist/personas && cp -f src/skills/defaults/*.md dist/skills/defaults/ && cp -f src/personas/*.md dist/personas/",
+    "dev": "tsc -p tsconfig.json --watch & node --watch dist/index.js",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agentify/shared": "workspace:*",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.126",
+    "@fastify/sensible": "^6.0.2",
+    "@octokit/auth-app": "^7.1.4",
+    "@octokit/rest": "^21.0.2",
+    "fastify": "^5.1.0",
+    "fastify-type-provider-zod": "^4.0.2",
+    "pino": "^9.5.0",
+    "prom-client": "^15.1.3",
+    "ulid": "^2.3.0",
+    "undici": "^7.0.0",
+    "yaml": "^2.6.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.7.2"
+  }
+}
