@@ -79,7 +79,7 @@ pnpm --filter @agentify/tui start
 node packages/tui/dist/index.js
 ```
 
-That's it. Open an issue in the sandbox repo, label it `agent:tinkerer task:plan`, and the orchestrator (or whichever agent matches) will pick it up within `WORK_POLL_S` seconds.
+That's it. Open an issue in the sandbox repo, label it `agent:tinkerer:plan`, and the orchestrator (or whichever agent matches) will pick it up within `WORK_POLL_S` seconds.
 
 ### Verify it's working
 
@@ -98,27 +98,30 @@ curl -N http://localhost:8080/logs/stream
 
 ### Routing labels
 
-Work is dispatched purely by GitHub labels. Apply both labels to an issue or PR:
+Work is dispatched purely by GitHub labels. Apply a single combined label to an issue or PR:
 
-| Label                    | Meaning                                                 |
-| ------------------------ | ------------------------------------------------------- |
-| `agent:<persona>`        | Which persona/agent should handle it                    |
-| `task:<method>`          | Which method to invoke                                  |
-| `task:<method>-in-progress` | Set by the agent on accept; cleared on completion    |
-| `needs-human`            | Operator escape hatch — takes the item out of routing   |
-| `halt-agents`            | Set anywhere to halt the entire coordinator             |
+| Label                                  | Meaning                                                       |
+| -------------------------------------- | ------------------------------------------------------------- |
+| `agent:<persona>:<method>`             | Route to `<persona>` using `<method>` (e.g. `agent:tinkerer:plan`) |
+| `agent:<persona>:<method>-in-progress` | Set by the agent on accept; cleared on completion             |
+| `needs-human`                          | Operator escape hatch — takes the item out of routing         |
+| `halt-agents`                          | Set anywhere to halt the entire coordinator                   |
 
-The work-poller scans active repos every `WORK_POLL_S` seconds. For each open issue/PR with both an `agent:*` and a `task:*` label (and no `needs-human`, no matching `*-in-progress`), it picks an idle agent matching the persona and dispatches.
+The combined `agent:<persona>:<method>` format lets a single issue or PR carry multiple routing labels simultaneously — e.g. `agent:conductor:review` AND `agent:skeptic:review` — and each evolves independently. (The previous two-label scheme — `agent:<persona>` plus `task:<method>` — made this impossible: the first agent to pick up the item would remove the shared `task:review` label and the second would never see it.)
+
+The work-poller scans active repos every `WORK_POLL_S` seconds. For each open issue/PR carrying an `agent:<persona>:<method>` label (and no `needs-human`, no matching `<persona>:<method>-in-progress` marker), it picks an idle agent for that persona and dispatches.
 
 ### Methods (skills)
 
-| Method           | Label                          | Purpose                                                |
+| Method           | Slug in routing label          | Purpose                                                |
 | ---------------- | ------------------------------ | ------------------------------------------------------ |
-| `plan`           | `task:plan`                    | Read an issue, break it into child issues w/ checklist |
-| `implement`      | `task:implement`               | Open a PR for an issue                                 |
-| `review`         | `task:review`                  | Review a PR (approve / changes / comment)              |
-| `address_review` | `task:address-review`          | Push commits answering review feedback                 |
-| `merge`          | `task:merge`                   | Merge an approved PR                                   |
+| `plan`           | `plan`                         | Read an issue, break it into child issues w/ checklist |
+| `implement`      | `implement`                    | Open a PR for an issue                                 |
+| `review`         | `review`                       | Review a PR (approve / changes / comment)              |
+| `address_review` | `address-review`               | Push commits answering review feedback                 |
+| `merge`          | `merge`                        | Merge an approved PR                                   |
+
+Full routing label: `agent:<persona>:<slug>` (e.g. `agent:tinkerer:address-review`). The method slug uses kebab-case where the enum uses snake_case (`address_review` → `address-review`).
 
 The skill prompts are bundled defaults at `packages/agent/src/skills/defaults/*.md`. A persona's SOUL.md can override any of them with `## Skill: <method>` sections.
 
@@ -375,7 +378,7 @@ CLEANUP=1 \
 
 1. Drop a new SOUL.md in `souls/` (e.g. `souls/my-bot.md`). Use `type: custom` and a unique `name`.
 2. Add a service block in `docker-compose.yml` mirroring the others, mounting your soul at `/etc/agentify/SOUL.md`.
-3. Apply `agent:my-bot task:plan` to a sandbox issue.
+3. Apply `agent:my-bot:plan` to a sandbox issue.
 
 ## Reference
 
@@ -385,7 +388,7 @@ CLEANUP=1 \
    coordinator                          agent
    ───────────                          ─────
    work-poller sees                     IDLE
-   `agent:X task:plan` on issue 7
+   `agent:X:plan` on issue 7
               │
               ▼
    pickIdleAgent → mark agent BUSY
@@ -395,10 +398,10 @@ CLEANUP=1 \
               │                        flip to BUSY
               │                        ◄───── 202 {agent_id, status:BUSY}
               │
-   updateJobStatus(running)             flipToInProgress label
+   updateJobStatus(running)             flip routing label to in-progress
                                         worktreeManager.prepare
                                         Claude SDK runs the skill
-                                        on success: removeLabels(in-progress, task)
+                                        on success: remove in-progress + routing label
                                         on failure: comment + needs-human
                                         state.completeJob → IDLE
                                         coordinator.putSession(session_id)
