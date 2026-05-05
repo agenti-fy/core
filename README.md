@@ -27,6 +27,8 @@ A multi-agent software development system. Each **agent** is an HTTP service dri
 
 The system has no auth/authz on its own HTTP surface — deploy on a private network or behind a reverse proxy.
 
+See [CHANGELOG.md](./CHANGELOG.md) for release history.
+
 ## Contents
 
 - [Quick start](#quick-start)
