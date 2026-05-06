@@ -38,6 +38,12 @@ const ConfigSchema = z.object({
   staleJobSweepSeconds: z.coerce.number().int().positive().default(10 * 60),
 
   /**
+   * Plan-completion poller. Scans open plans, updates parent body checklists,
+   * and closes the parent issue when all children are closed.
+   */
+  planCompletionPollSeconds: z.coerce.number().int().positive().default(60),
+
+  /**
    * PR review monitor. Walks open PRs and applies routing labels deterministically
    * based on review state (CHANGES_REQUESTED → address-review, all-approved → merge,
    * otherwise → reviewer labels).
@@ -101,6 +107,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     completedJobRetentionDays: env.COMPLETED_JOB_RETENTION_DAYS,
     staleJobTimeoutSeconds: env.STALE_JOB_TIMEOUT_S,
     staleJobSweepSeconds: env.STALE_JOB_SWEEP_S,
+    planCompletionPollSeconds: env.PLAN_COMPLETION_POLL_S,
     prMonitorIntervalSeconds: env.PR_MONITOR_INTERVAL_S,
     prMonitorRequiredReviewers: env.PR_MONITOR_REQUIRED_REVIEWERS,
     disableGithub: env.DISABLE_GITHUB,

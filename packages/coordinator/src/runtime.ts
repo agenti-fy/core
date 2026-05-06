@@ -7,6 +7,7 @@ import { pollDueRepos } from './poller/work-poller.js';
 import { pollJobCompletions } from './poller/job-poller.js';
 import { sweepStaleInProgress } from './poller/stale-sweeper.js';
 import { monitorPullRequests } from './poller/pr-monitor.js';
+import { scanPlansForCompletion } from './poller/plan-completion-poller.js';
 import { dispatchBatch } from './dispatch/index.js';
 import type { AgentRpcClient } from './agent-client.js';
 import type { CoordinatorMetrics } from './metrics.js';
@@ -193,6 +194,21 @@ export function startRuntime(deps: RuntimeDeps): RuntimeHandles {
         },
         deps.config.prMonitorIntervalSeconds * 1000,
         'pr-monitor',
+        deps.logger,
+      ),
+    );
+    stops.push(
+      scheduleLoop(
+        async () => {
+          const result = await scanPlansForCompletion(deps.github!, deps.store, deps.logger);
+          if (result.closedParents > 0) {
+            deps.logger.info(result, 'plan-completion-poller tick');
+          } else {
+            deps.logger.debug(result, 'plan-completion-poller tick (no closures)');
+          }
+        },
+        deps.config.planCompletionPollSeconds * 1000,
+        'plan-completion-poller',
         deps.logger,
       ),
     );
