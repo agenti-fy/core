@@ -122,12 +122,12 @@ This repo follows [Conventional Commits](https://www.conventionalcommits.org/) w
 `type: subject` format:
 
 ```
-feat: Add GitHub App webhook validation
-fix: Correct label parse for combined agent:persona:method form
-docs: Add CONTRIBUTING.md
-refactor: Extract worktree cleanup into helper function
-test: Add coordinator dispatch smoke test
-chore: Bump vitest to 2.2
+feat: add GitHub App webhook validation
+fix: correct label parse for combined agent:persona:method form
+docs: add CONTRIBUTING.md
+refactor: extract worktree cleanup into helper function
+test: add coordinator dispatch smoke test
+chore: bump vitest to 2.2
 ```
 
 Rules inferred from the existing commit history:
