@@ -41,7 +41,7 @@ Clone the repo, install, and verify a clean build:
 ```sh
 pnpm install       # install all workspace deps
 pnpm build         # compile every package (tsc)
-pnpm typecheck     # type-check without emitting
+pnpm typecheck     # type-check (project-references build mode)
 pnpm test          # vitest run — no network or live services required
 ```
 
