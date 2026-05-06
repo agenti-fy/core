@@ -123,9 +123,12 @@ Controlled by `CLAUDE_ADAPTER` (default `auto`):
 
 Source: `src/index.ts` `pickClaudeAdapter()`.
 
-## Turn budgets
+## Budget limits
 
-`LiveClaudeAdapter` enforces a per-method hard cap on Claude Agent SDK turns.
+`LiveClaudeAdapter` enforces per-method turn caps and two shared limits.
+
+### Turn budgets
+
 Each method has its own env var and default:
 
 | Env var | Default | Rationale |
@@ -136,9 +139,15 @@ Each method has its own env var and default:
 | `CLAUDE_MAX_TURNS_ADDRESS_REVIEW` | 200 | May need to apply many comments across files |
 | `CLAUDE_MAX_TURNS_MERGE` | 50 | Merge is narrow: rebase, push, merge; 50 is generous |
 
-`CLAUDE_MAX_TURNS` (legacy) overrides all per-method defaults when set; per-method vars take precedence over it. Budget exhaustion produces a `task_error` outcome and applies `needs-human` to the issue (same path as a timeout).
+`CLAUDE_MAX_TURNS` (legacy) overrides all per-method defaults when set; per-method vars take precedence over it. Budget exhaustion produces a `task_error` outcome.
 
-**Hot-reload**: changing `CLAUDE_MAX_TURNS_*` or `CLAUDE_TIMEOUT_MS` env vars and calling `POST /reset` applies the new values on the next skill run without a process restart. Static-at-boot settings (`HOST`, `PORT`, `COORDINATOR_URL`, `AGENT_PUBLIC_URL`, `HEARTBEAT_INTERVAL_MS`, credentials) require a restart to take effect.
+### Cost ceiling
+
+`CLAUDE_COST_LIMIT_USD` (default `5.0`, `0` disables) sets a per-job USD ceiling. The live adapter reads the cumulative `total_cost_usd` reported on each result message and raises `task_error` the moment the ceiling is crossed. `$5` leaves headroom for a full Opus plan path while catching runaway loops before they become expensive.
+
+Cost tracking is best-effort: older SDK versions may not report per-turn cost data. When a job completes without any cost data the adapter logs a one-time warning but does not abort.
+
+**Hot-reload**: changing `CLAUDE_MAX_TURNS_*`, `CLAUDE_TIMEOUT_MS`, or `CLAUDE_COST_LIMIT_USD` and calling `POST /reset` applies the new value on the next skill run without a process restart. Static-at-boot settings (`HOST`, `PORT`, `COORDINATOR_URL`, `AGENT_PUBLIC_URL`, `HEARTBEAT_INTERVAL_MS`, credentials) require a restart to take effect.
 
 ## Local dev
 

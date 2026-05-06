@@ -89,7 +89,7 @@ All outcomes are stored in the `jobs` table. The coordinator also emits a struct
 | Outcome | Typical cause | Where to look | Recovery |
 |---------|--------------|---------------|----------|
 | `success` | Skill completed without error | — | None |
-| `task_error` | Skill returned an error, or `CLAUDE_TIMEOUT_MS` was hit | Comment posted on the issue/PR; `GET /agents/:id/jobs` | Remove `needs-human`, re-apply routing label |
+| `task_error` | Skill returned an error, `CLAUDE_TIMEOUT_MS` was hit, or `CLAUDE_COST_LIMIT_USD` ceiling was exceeded | Comment posted on the issue/PR; `GET /agents/:id/jobs` | Remove `needs-human`, re-apply routing label |
 | `orphaned` | Agent restarted mid-run (job was dispatched but agent has no record of it) | Coordinator logs: `agent has no record of our job — orphaned` | Remove any stale `*-in-progress` label on GitHub; re-apply routing label |
 | `sdk_failure` | Claude SDK threw an unhandled exception | Agent logs; `GET /agents/:id` → `last_known_status: FAILURE` | Fix the cause (API key, network); `POST /agents/:id/reset` |
 | `auth_failure` | 401/403 from Anthropic API or GitHub | Agent logs; comment on issue/PR | Fix credentials; `POST /agents/:id/reset` |

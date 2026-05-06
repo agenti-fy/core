@@ -242,6 +242,7 @@ The agent's `LiveClaudeAdapter` calls the Claude Agent SDK. Set `ANTHROPIC_API_K
 | `CLAUDE_MAX_TURNS_ADDRESS_REVIEW` | `200`               | Turn cap for the address-review skill                    |
 | `CLAUDE_MAX_TURNS_MERGE`       | `50`                    | Turn cap for the merge skill                             |
 | `CLAUDE_TIMEOUT_MS`            | `900000` (15 min)       | Per-skill wall-clock cap. `0` disables.                  |
+| `CLAUDE_COST_LIMIT_USD`        | `5.0`                   | Per-job USD ceiling. `0` disables. Aborts with `task_error` when exceeded. |
 | `CLAUDE_ADAPTER`               | `auto`                  | `auto`, `live`, or `stub`                                |
 | `ANTHROPIC_API_KEY`            | —                       | Required for the live adapter                            |
 | `GITHUB_APP_*` / `GITHUB_USER` | —                       | Same as coordinator. Not needed if `DISABLE_GITHUB=true` |

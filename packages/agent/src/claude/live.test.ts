@@ -1,11 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import pino from 'pino';
+import type { SkillRunOptions } from './adapter.js';
 import { __test, LiveClaudeAdapter } from './live.js';
 import { loadConfig, resolveMaxTurns, applyHotReloadable } from '../config.js';
 import type { Method } from '@agentify/shared';
 
+// ---- vi.mock must be top-level so vitest hoists it ----
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({ query: vi.fn() }));
+
+// Import the mocked binding AFTER vi.mock so we get the mock reference.
+// ESM live-binding: `query` in live.ts will see this same mock.
+import { query } from '@anthropic-ai/claude-agent-sdk';
+
 const { extractArtifacts } = __test;
 const silentLog = pino({ level: 'silent' });
+
+// ---------------------------------------------------------------------------
+// extractArtifacts unit tests (unchanged)
+// ---------------------------------------------------------------------------
 
 describe('extractArtifacts', () => {
   it('parses bare JSON object as the slot contents', () => {
@@ -87,7 +99,6 @@ describe('extractArtifacts', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // LiveClaudeAdapter.buildSdkOptions — per-method tool scoping
 // ---------------------------------------------------------------------------
 
@@ -260,6 +271,7 @@ describe('LiveClaudeAdapter maxTurns per method', () => {
       logger: silentLog,
       maxTurnsForMethod: (m) => resolveMaxTurns(cfg, m),
       timeoutMsGetter: () => 0,
+      costLimitUsd: 0,
     });
 
     await adapter.run(baseOpts);
@@ -275,6 +287,7 @@ describe('LiveClaudeAdapter maxTurns per method', () => {
       logger: silentLog,
       maxTurnsForMethod: (m) => resolveMaxTurns(cfg, m),
       timeoutMsGetter: () => 0,
+      costLimitUsd: 0,
     });
 
     await adapter.run(baseOpts);
@@ -289,6 +302,7 @@ describe('LiveClaudeAdapter maxTurns per method', () => {
       logger: silentLog,
       maxTurnsForMethod: (m) => resolveMaxTurns(cfg, m),
       timeoutMsGetter: () => 0,
+      costLimitUsd: 0,
     });
 
     const methods: Method[] = ['plan', 'implement', 'review', 'address_review', 'merge'];
@@ -424,6 +438,7 @@ describe('LiveClaudeAdapter hot-reload', () => {
       logger: silentLog,
       maxTurnsForMethod: (m) => resolveMaxTurns(cfg, m),
       timeoutMsGetter: () => 0,
+      costLimitUsd: 0,
     });
 
     // First run uses the original default (50).
@@ -481,6 +496,7 @@ describe('LiveClaudeAdapter hot-reload (timeoutMs)', () => {
       logger: silentLog,
       maxTurnsForMethod: (m) => resolveMaxTurns(cfg, m),
       timeoutMsGetter: () => cfg.claudeTimeoutMs,
+      costLimitUsd: 0,
     });
 
     const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
@@ -505,5 +521,141 @@ describe('LiveClaudeAdapter hot-reload (timeoutMs)', () => {
     expect(secondCalls[0]?.[1]).toBe(60_000);
 
     setTimeoutSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cost limit enforcement
+// ---------------------------------------------------------------------------
+
+const costLimitBaseOpts: SkillRunOptions = {
+  method: 'implement',
+  repo: 'org/repo',
+  target_id: 42,
+  personaBody: '',
+  skillPrompt: 'do stuff',
+  systemPrompt: 'do stuff',
+  model: undefined,
+  sessionId: null,
+  cwd: '/tmp',
+};
+
+/**
+ * Returns a mock `query` implementation that yields `messages` in order.
+ * It reads `abortController` from the SDK options and throws on the next
+ * yield after `ac.abort()` is called — matching real SDK abort behaviour.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeAbortAwareQuery(messages: unknown[]): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (args: any) => {
+    const ac: AbortController | undefined = args?.options?.abortController;
+    return {
+      [Symbol.asyncIterator]() {
+        return (async function* () {
+          for (const m of messages) {
+            if (ac?.signal.aborted) {
+              throw new Error('AbortError: The operation was aborted.');
+            }
+            yield m;
+          }
+        })();
+      },
+    };
+  };
+}
+
+describe('LiveClaudeAdapter cost limit', () => {
+  const mockQuery = vi.mocked(query);
+
+  beforeEach(() => {
+    __test.resetNoCostWarn();
+  });
+
+  it('aborts and returns task_error when cumulative cost exceeds limit', async () => {
+    mockQuery.mockImplementation(
+      makeAbortAwareQuery([
+        { type: 'system', subtype: 'init', session_id: 'sess_cost_1' },
+        { type: 'result', total_cost_usd: 2.5 },
+        { type: 'result', total_cost_usd: 6.0 },  // triggers abort
+        { type: 'result', total_cost_usd: 8.0 },  // never yielded
+      ]),
+    );
+
+    const adapter = new LiveClaudeAdapter({
+      logger: silentLog,
+      maxTurnsForMethod: () => 100,
+      timeoutMsGetter: () => 0,
+      costLimitUsd: 5.0,
+    });
+    const result = await adapter.run(costLimitBaseOpts);
+
+    expect(result.outcome).toBe('task_error');
+    expect(result.error?.message).toMatch(/cost limit exceeded/i);
+    expect(result.error?.message).toContain('6.0000');
+    expect(result.costUsd).toBe(6.0);
+    // Must not include a stack (it's our own message, not an exception)
+    expect(result.error).not.toHaveProperty('stack');
+  });
+
+  it('does not abort when cumulative cost stays below the limit', async () => {
+    mockQuery.mockImplementation(
+      makeAbortAwareQuery([
+        { type: 'system', subtype: 'init', session_id: 'sess_cost_2' },
+        { type: 'result', total_cost_usd: 1.0 },
+        { type: 'result', total_cost_usd: 4.9 },
+      ]),
+    );
+
+    const adapter = new LiveClaudeAdapter({
+      logger: silentLog,
+      maxTurnsForMethod: () => 100,
+      timeoutMsGetter: () => 0,
+      costLimitUsd: 5.0,
+    });
+    const result = await adapter.run(costLimitBaseOpts);
+
+    expect(result.outcome).toBe('success');
+    expect(result.costUsd).toBe(4.9);
+  });
+
+  it('does not abort when costLimitUsd is 0 (ceiling disabled)', async () => {
+    mockQuery.mockImplementation(
+      makeAbortAwareQuery([
+        { type: 'system', subtype: 'init', session_id: 'sess_cost_3' },
+        { type: 'result', total_cost_usd: 999.0 },
+      ]),
+    );
+
+    const adapter = new LiveClaudeAdapter({
+      logger: silentLog,
+      maxTurnsForMethod: () => 100,
+      timeoutMsGetter: () => 0,
+      costLimitUsd: 0,
+    });
+    const result = await adapter.run(costLimitBaseOpts);
+
+    expect(result.outcome).toBe('success');
+    expect(result.costUsd).toBe(999.0);
+  });
+
+  it('skips ceiling check when SDK messages carry no cost data (best-effort)', async () => {
+    mockQuery.mockImplementation(
+      makeAbortAwareQuery([
+        { type: 'system', subtype: 'init', session_id: 'sess_cost_4' },
+        { type: 'result' }, // no total_cost_usd
+      ]),
+    );
+
+    const adapter = new LiveClaudeAdapter({
+      logger: silentLog,
+      maxTurnsForMethod: () => 100,
+      timeoutMsGetter: () => 0,
+      costLimitUsd: 5.0,
+    });
+    // Should complete without aborting — ceiling check is skipped
+    const result = await adapter.run(costLimitBaseOpts);
+    expect(result.outcome).toBe('success');
+    expect(result.costUsd).toBeUndefined();
   });
 });

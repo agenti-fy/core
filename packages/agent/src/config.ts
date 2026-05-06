@@ -51,6 +51,12 @@ const ConfigSchema = z.object({
   /** SDK call timeout. 0 disables. */
   claudeTimeoutMs: z.coerce.number().int().nonnegative().default(15 * 60 * 1000),
 
+  /**
+   * Per-job cost ceiling in USD. When the SDK-reported cumulative cost exceeds
+   * this value the run is aborted and returns task_error. 0 disables.
+   */
+  claudeCostLimitUsd: z.coerce.number().nonnegative().default(5.0),
+
   // Required when disableGithub=false; checked in the superRefine below so
   // the agent can boot offline (DISABLE_GITHUB=true) without dummy values.
   githubAppId: z.string().optional(),
@@ -154,6 +160,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     claudeMaxTurnsMerge: env.CLAUDE_MAX_TURNS_MERGE ?? env.CLAUDE_MAX_TURNS,
     // compose's ${VAR-} expands to '' when VAR is unset; treat that as unset, not as 0=disabled
     claudeTimeoutMs: env.CLAUDE_TIMEOUT_MS || undefined,
+    claudeCostLimitUsd: env.CLAUDE_COST_LIMIT_USD,
     githubAppId: env.GITHUB_APP_ID,
     githubAppPrivateKey: env.GITHUB_APP_PRIVATE_KEY,
     githubAppInstallationId: env.GITHUB_APP_INSTALLATION_ID,
