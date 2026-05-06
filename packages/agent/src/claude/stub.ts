@@ -28,7 +28,7 @@ export class StubClaudeAdapter implements ClaudeAdapter {
         model: opts.model,
         session_resumed: opts.sessionId !== null,
         cwd: opts.cwd,
-        prompt_chars: opts.systemPrompt.length,
+        prompt_chars: opts.systemPrompt.stable.length + opts.systemPrompt.volatile.length,
       },
       'stub-adapter: running skill',
     );

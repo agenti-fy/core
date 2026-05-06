@@ -58,13 +58,18 @@ function loadCommon(): string {
 export interface ResolvedSkill {
   /** Persona prose. Passed to the Agent SDK as the `systemPrompt`. */
   personaBody: string;
-  /** Per-method instructions with template tokens filled in. Passed to the SDK as the user message. */
+  /**
+   * Per-method instructions with stable template body + trailing Task vars block.
+   * Passed to the SDK as the user message.
+   */
   skillPrompt: string;
   /**
-   * Convenience: persona + skill concatenated. Used by the StubClaudeAdapter,
-   * by tests, and as a fallback for adapters that don't separate roles.
+   * Split prompt for prompt-cache consumers.
+   * `stable`: persona body + skill template with only the signature substituted —
+   *   byte-identical across different (repo, target_id) values for the same soul+method.
+   * `volatile`: small trailing "Task vars" block (≤8 lines) listing per-job tokens.
    */
-  systemPrompt: string;
+  systemPrompt: { stable: string; volatile: string };
   /** Whether the skill body came from the SOUL.md override or the bundled default. */
   source: 'soul' | 'default';
 }
@@ -114,24 +119,46 @@ export function resolveSkill(opts: ResolveOptions): ResolvedSkill {
 
   const overridden = opts.soul.skillOverrides[opts.method];
   const skillTemplate = overridden ?? loadDefaultSkill(opts.method);
-  const skillPrompt = interpolate(skillTemplate, {
-    repo: opts.repo,
-    target_id: String(opts.target_id),
-    agent_name: opts.soul.frontmatter.name,
-    persona: opts.personaName,
+
+  // Only interpolate the stable signature token. Per-job tokens ({{repo}},
+  // {{target_id}}, {{persona}}, {{agent_name}}) are left as literal placeholders
+  // in the template so the stable section is byte-identical across different jobs.
+  const stableTemplate = interpolate(skillTemplate, {
     signature: signatureFor(opts.soul),
     common: loadCommon(),
   });
 
-  const systemPrompt =
-    `${personaBody.trim()}\n\n---\n\n${skillPrompt.trim()}\n`;
+  const volatile = buildTaskVars({
+    repo: opts.repo,
+    target_id: opts.target_id,
+    persona: opts.personaName,
+    agent_name: opts.soul.frontmatter.name,
+  });
+
+  const stable = `${personaBody.trim()}\n\n---\n\n${stableTemplate.trim()}\n`;
+  const skillPrompt = `${stableTemplate.trim()}\n\n${volatile}`;
 
   return {
     personaBody: personaBody.trim(),
-    skillPrompt: skillPrompt.trim(),
-    systemPrompt,
+    skillPrompt,
+    systemPrompt: { stable, volatile },
     source: overridden ? 'soul' : 'default',
   };
+}
+
+function buildTaskVars(vars: {
+  repo: string;
+  target_id: number;
+  persona: string;
+  agent_name: string;
+}): string {
+  return [
+    '## Task vars',
+    `Repo: ${vars.repo}`,
+    `Target: ${vars.target_id}`,
+    `Persona: ${vars.persona}`,
+    `Agent: ${vars.agent_name}`,
+  ].join('\n');
 }
 
 function personaBodyFor(soul: ParsedSoul): string {
