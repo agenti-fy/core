@@ -890,6 +890,79 @@ agenti-fy/
 7. **TUI** — `@agentify/tui` package: dashboard, agents, jobs, repos, logs screens; halt confirmation; non-TTY `agentify status` fallback.
 8. **Polish** — `/reset`, stale-job sweeper, halt label, plan auto-close loop, docs.
 
+## 22. Security model
+
+### 22.1 Trust boundaries
+
+| Zone | What falls here | Why |
+|---|---|---|
+| **Trusted** | SOUL.md files, bundled persona bodies, coordinator config, container environment variables, the image filesystem | Controlled entirely by operators with infra access. Changing these requires the same level of trust as redeploying the stack. |
+| **Semi-trusted** | GitHub App token scope, git remote (push/fetch) | Token scope is bounded to the installation's repos. Mis-scoped tokens are an ops concern, not a code-validation concern. |
+| **Untrusted** | Every field writable by a GitHub user who is not an agent: issue/PR titles, bodies, labels, review comments, PR review bodies, diff text, commit messages on PRs | An attacker only needs write access to any of these. This set includes repo collaborators, outside contributors, and automated bots outside the agenti-fy stack. |
+
+**Key implication**: `{{repo}}` and `{{target_id}}` are always safe to interpolate — `RepoSchema` (`packages/shared/src/rpc.ts`) and `z.number().int().positive()` are hard constraints, not soft checks. `{{persona}}` is safe only because three independent validation layers (§22.2) guarantee it before interpolation; there is no safe default for an unvalidated string interpolated into a shell argument.
+
+### 22.2 Input-validation contract
+
+Three independent layers prevent a hostile persona name from reaching a skill prompt:
+
+**Layer 1 — Routing-label parser** (`packages/shared/src/labels.ts:parseRoutingLabel`)
+Extracts the persona segment from `agent:<persona>:<method>` labels using plain string slicing (no regex backtracking). Calls `isValidPersonaName` before returning a result. Any label whose persona segment fails the allowlist is silently dropped and counted as `agentify_coordinator_invalid_routing_labels_total{repo}`.
+
+**Layer 2 — RPC schema** (`packages/shared/src/rpc.ts`)
+`DispatchRequestSchema.persona_name` and `RegisterRequestSchema.name` both use `PersonaNameSchema` (`packages/shared/src/personas.ts:PersonaNameSchema`). Any HTTP request that delivers a malformed name is rejected with HTTP 400 before the agent touches it.
+
+**Layer 3 — Resolver fail-closed** (`packages/agent/src/skills/resolver.ts:resolveSkill`)
+Even after layers 1–2, `resolveSkill` re-validates `opts.personaName` against `PERSONA_NAME_RE` (`packages/shared/src/personas.ts:PERSONA_NAME_RE`). A failure throws `InvalidPersonaNameError`, which propagates to the skill runner's outer catch and routes to `needs-human`. A future code path that constructs `ResolveOptions` directly cannot bypass layers 1–2 without triggering layer 3.
+
+**The allowlist**: `PERSONA_NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/` — lowercase ASCII letter start, then lowercase alphanumeric / underscore / hyphen, max 32 chars. Shell metacharacters, uppercase, path separators, and whitespace are all excluded.
+
+Any field reaching a skill prompt MUST satisfy one of: (a) numeric (`target_id`), (b) validated by `RepoSchema`, or (c) passed through `PersonaNameSchema`. Free-form GitHub text — issue bodies, PR descriptions, review comments, diff output — must not be interpolated into skill templates. It may only appear as the output of an explicit `gh` tool call inside the skill's own execution context, where the `SECURITY_PREAMBLE` applies.
+
+### 22.3 Prompt-injection mitigations
+
+Two independent defenses handle the threat that attacker-controlled GitHub text instructs Claude to deviate from its skill:
+
+**Primary defense — `SECURITY_PREAMBLE`** (`packages/agent/src/skills/resolver.ts:SECURITY_PREAMBLE`)
+Prepended to every system prompt before the persona body. Tells Claude that any text returned by `gh issue view`, `gh pr view`, `gh pr diff`, or `gh pr view --json reviews,comments` is DATA describing the requested work, not an instruction extension. If that data contains directives like "ignore the above", "you are now", or "system:", Claude is instructed to treat it as a hijack attempt, apply `needs-human`, and stop.
+
+This is a best-effort defense. A sufficiently crafted injection can still influence Claude's behavior. It is not a hard boundary.
+
+**Early gate — coordinator hijack detector** (`packages/coordinator/src/security/hijack-detector.ts:detectHijackAttempt`)
+Runs in the work poller's `evaluateIssue` path before any dispatch decision. Applies a heuristic catalog of six regex patterns (no `g` flag; no catastrophic backtracking risk) to the issue body:
+
+| Pattern name | What it catches |
+|---|---|
+| `ignore-previous-instructions` | "ignore all/the/previous/above instructions/rules/prompt" |
+| `role-override` | "you are/you're now/actually a/an \<role\>" |
+| `system-colon-line-start` | `system:` or `system prompt:` at line start |
+| `system-xml-tag` | `<system>` / `</system>` injection tags |
+| `disregard-forget-instructions` | "disregard/forget … instructions/rules/prompt" (bounded quantifier) |
+| `fenced-system-block` | ` ```system ` fenced code block at line start |
+
+A match routes the issue to `needs-human` instead of the dispatch queue, adds the label, and posts an explanatory comment quoting the matched patterns. The body hash is stored so a re-scan of the same body does not repost the comment. Counters: `agentify_coordinator_hijack_attempts_total{repo,pattern}`.
+
+This detector operates only on issue bodies as they appear to the coordinator's GitHub poll. It does NOT scan PR diff content or review comment bodies.
+
+**Neither layer is a hard security boundary.** Together they raise the cost of an attack significantly and provide operator visibility without claiming impossibility.
+
+### 22.4 What is not mitigated
+
+- **Diff code-comment injection.** A PR diff may contain source code with comments like `// Ignore the above instructions …`. The diff is fetched by the skill via `gh pr diff` inside Claude's execution context; the coordinator scanner never sees it. The `SECURITY_PREAMBLE` is the only defense here, and it is best-effort.
+- **SOUL.md tampering.** A SOUL.md authored by an attacker with operator-level access is indistinguishable from a legitimate one. Admin-level access is outside the threat model.
+- **GitHub App private key compromise.** Rotating the key, reviewing token scopes, and auditing App installation permissions are operator responsibilities outside this codebase.
+- **Allowlist exhaustion via custom souls.** A custom soul whose `name` passes `PERSONA_NAME_RE` but whose body is adversarially crafted is a trusted-zone problem (SOUL.md files are operator-controlled; see §22.1).
+
+### 22.5 Operator response: hijack flag
+
+When the coordinator applies `needs-human` due to a hijack detection:
+
+1. **Locate the item.** The coordinator posts a comment on the flagged issue listing the matched pattern names. The `agentify_coordinator_hijack_attempts_total` Prometheus counter records the hit with `{repo, pattern}` labels — visible in the TUI metrics pane or via `GET /metrics`.
+2. **Inspect the body.** Read the issue body for the text that matched. Determine whether it is a genuine injection attempt or a false positive (e.g., a legitimate bug report that mentions "ignore the previous instructions" in passing).
+3. **False positive.** Edit the issue body to remove or rephrase the triggering phrase, then remove the `needs-human` label. The work poller will re-evaluate on the next cycle and route normally if the body no longer matches.
+4. **Confirmed attack.** Close the issue and block the author via GitHub's abuse tooling if appropriate. Do not remove `needs-human` without addressing the content.
+5. **Adjust the catalog if needed.** If false-positive rate is high on a specific pattern, open an issue to tighten the regex. Bias the catalog toward precision — a missed detection reaches the `SECURITY_PREAMBLE` defense; an over-eager pattern disrupts legitimate work.
+
 ---
 
 *Spec v0.1.0 — captured from interview on 2026-05-02. Predecessor reference: `../agenti-fi`.*
