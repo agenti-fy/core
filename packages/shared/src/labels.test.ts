@@ -78,4 +78,26 @@ describe('parseRoutingLabel', () => {
     expect(parseRoutingLabel('agent:tinkerer:nonsense')).toBeNull();
     expect(parseRoutingLabel('agent:tinkerer:nonsense-in-progress')).toBeNull();
   });
+
+  it('returns null for shell-metacharacter persona segments', () => {
+    expect(parseRoutingLabel('agent:$(rm -rf /):implement')).toBeNull();
+    expect(parseRoutingLabel('agent:`whoami`:implement')).toBeNull();
+    expect(parseRoutingLabel('agent:bad;persona:implement')).toBeNull();
+    expect(parseRoutingLabel('agent:bad|persona:implement')).toBeNull();
+    expect(parseRoutingLabel('agent:bad&persona:implement')).toBeNull();
+  });
+
+  it('returns null for uppercase persona segments', () => {
+    expect(parseRoutingLabel('agent:Tinkerer:implement')).toBeNull();
+    expect(parseRoutingLabel('agent:SKEPTIC:review')).toBeNull();
+  });
+
+  it('returns null when the persona segment exceeds 32 characters', () => {
+    const long = 'a'.repeat(33);
+    expect(parseRoutingLabel(`agent:${long}:implement`)).toBeNull();
+  });
+
+  it('returns null when the persona segment contains a newline', () => {
+    expect(parseRoutingLabel('agent:bad\npersona:implement')).toBeNull();
+  });
 });
