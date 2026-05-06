@@ -287,7 +287,7 @@ Rough cost ratios (input tokens, as of 2026): Opus ~15×, Sonnet ~3×, Haiku ~0.
 
 ### Prompt-cache TTL and low-traffic setups
 
-The Anthropic API caches prompt prefixes for **5 minutes**. Each agent's system prompt (preset + persona body + skill body) is stable across calls for the same method, so back-to-back jobs of the same type on the same agent hit the cache and pay only cache-read rates.
+The Anthropic API caches prompt prefixes for **5 minutes**. Each agent's system prompt (persona body + skill body) is stable across calls for the same method, so back-to-back jobs of the same type on the same agent hit the cache and pay only cache-read rates. **Cache warmth matters**: if an agent is idle for more than 5 minutes between jobs, the cached prefix expires and the next call pays full input-token rates to rebuild it. In practice this means the optimisation is most visible in burst workloads where the same persona runs multiple consecutive jobs within a short window.
 
 In low-traffic setups where the same agent handles one job every few hours, every job is a cache miss. This does not break anything — it just means you won't see the cache-hit savings that high-traffic deployments enjoy. If cost is a concern at low throughput, prefer Sonnet or Haiku over Opus, and tighten `CLAUDE_MAX_TURNS_*` to realistic ceilings for your workload.
 

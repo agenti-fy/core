@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from '@anthropic-ai/claude-agent-sdk';
 import {
   JobArtifactsSchema,
   type JobArtifacts,
@@ -111,11 +111,21 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
     context: { maxTurns: number; permissionMode: string; abortController: AbortController },
   ): Record<string, unknown> {
     const tools = TOOLS_BY_METHOD[opts.method];
+
+    // Build the systemPrompt as a string[]. The stable section (persona body +
+    // skill template with only the signature substituted) is byte-identical
+    // across jobs for the same soul+method, so the Anthropic API can cache it.
+    // SYSTEM_PROMPT_DYNAMIC_BOUNDARY marks where the non-cacheable volatile
+    // block (task vars: repo, target_id, persona) begins. The dynamic trailer
+    // is excluded from caching deliberately — caching it would burn a breakpoint
+    // on a per-job value that changes on every call.
+    const systemPrompt: string[] = opts.systemPrompt.volatile
+      ? [opts.systemPrompt.stable, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, opts.systemPrompt.volatile]
+      : [opts.systemPrompt.stable];
+
     const sdkOptions: Record<string, unknown> = {
       cwd: opts.cwd,
-      systemPrompt: opts.personaBody
-        ? { type: 'preset', preset: 'claude_code', append: opts.personaBody }
-        : { type: 'preset', preset: 'claude_code' },
+      systemPrompt,
       maxTurns: context.maxTurns,
       permissionMode: context.permissionMode,
       abortController: context.abortController,

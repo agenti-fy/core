@@ -5,8 +5,16 @@ import { __test, LiveClaudeAdapter } from './live.js';
 import { loadConfig, resolveMaxTurns, applyHotReloadable } from '../config.js';
 import type { Method } from '@agentify/shared';
 
+// Hardcoded boundary value so tests don't import from the mocked SDK module.
+const BOUNDARY = '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__';
+
 // ---- vi.mock must be top-level so vitest hoists it ----
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({ query: vi.fn() }));
+// Export SYSTEM_PROMPT_DYNAMIC_BOUNDARY so live.ts (which imports it) gets
+// the correct string value even when running under the test mock.
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  query: vi.fn(),
+  SYSTEM_PROMPT_DYNAMIC_BOUNDARY: '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__',
+}));
 
 // Import the mocked binding AFTER vi.mock so we get the mock reference.
 // ESM live-binding: `query` in live.ts will see this same mock.
@@ -170,6 +178,124 @@ describe('LiveClaudeAdapter.buildSdkOptions', () => {
 });
 
 // ---------------------------------------------------------------------------
+// LiveClaudeAdapter.buildSdkOptions — prompt caching via string[] systemPrompt
+// ---------------------------------------------------------------------------
+
+describe('LiveClaudeAdapter.buildSdkOptions — prompt caching', () => {
+  const ctx = {
+    maxTurns: 100,
+    permissionMode: 'bypassPermissions',
+    abortController: new AbortController(),
+  };
+
+  it('passes systemPrompt as a string[] with the boundary between stable and volatile', () => {
+    const opts = LiveClaudeAdapter.buildSdkOptions(
+      {
+        method: 'implement',
+        repo: 'org/repo',
+        target_id: 99,
+        personaBody: 'You are the implementer.',
+        skillPrompt: 'do stuff\n\n## Task vars\nRepo: org/repo\nTarget: 99',
+        systemPrompt: {
+          stable: 'You are the implementer.\n\n---\n\ndo stuff',
+          volatile: '## Task vars\nRepo: org/repo\nTarget: 99',
+        },
+        model: undefined,
+        sessionId: null,
+        cwd: '/tmp/wt',
+      },
+      ctx,
+    );
+
+    const sp = opts['systemPrompt'] as string[];
+    expect(Array.isArray(sp)).toBe(true);
+    const boundaryIdx = sp.indexOf(BOUNDARY);
+    expect(boundaryIdx, 'boundary must be present').toBeGreaterThan(-1);
+    expect(sp[0]).toContain('You are the implementer.');
+    expect(sp[0]).toContain('do stuff');
+    expect(sp[boundaryIdx + 1]).toContain('## Task vars');
+  });
+
+  it('places the stable prefix before the boundary (cacheable region)', () => {
+    const stable = 'stable persona and skill template';
+    const volatile = '## Task vars\nRepo: r\nTarget: 1';
+    const opts = LiveClaudeAdapter.buildSdkOptions(
+      {
+        method: 'plan',
+        repo: 'r',
+        target_id: 1,
+        personaBody: 'You are the planner.',
+        skillPrompt: `${stable}\n\n${volatile}`,
+        systemPrompt: { stable, volatile },
+        model: undefined,
+        sessionId: null,
+        cwd: '/tmp/wt',
+      },
+      ctx,
+    );
+
+    const sp = opts['systemPrompt'] as string[];
+    const boundaryIdx = sp.indexOf(BOUNDARY);
+    // Everything before the boundary should contain the stable content.
+    const beforeBoundary = sp.slice(0, boundaryIdx).join('\n');
+    expect(beforeBoundary).toContain(stable);
+    // Everything after the boundary should contain the volatile content.
+    const afterBoundary = sp.slice(boundaryIdx + 1).join('\n');
+    expect(afterBoundary).toContain(volatile);
+  });
+
+  it('omits the boundary when volatile is empty (no dynamic trailer)', () => {
+    const opts = LiveClaudeAdapter.buildSdkOptions(
+      {
+        method: 'merge',
+        repo: 'org/repo',
+        target_id: 1,
+        personaBody: 'You are the merger.',
+        skillPrompt: 'merge instructions',
+        systemPrompt: { stable: 'merge instructions', volatile: '' },
+        model: undefined,
+        sessionId: null,
+        cwd: '/tmp/wt',
+      },
+      ctx,
+    );
+
+    const sp = opts['systemPrompt'] as string[];
+    expect(Array.isArray(sp)).toBe(true);
+    expect(sp).not.toContain(BOUNDARY);
+  });
+
+  it('stable section is byte-identical for different (repo, target_id) — cache key is stable', () => {
+    const stableContent = 'fixed persona and skill template content';
+    const makeOpts = (repo: string, target_id: number): SkillRunOptions => ({
+      method: 'review',
+      repo,
+      target_id,
+      personaBody: 'You are the reviewer.',
+      skillPrompt: `${stableContent}\n\n## Task vars\nRepo: ${repo}\nTarget: ${target_id}`,
+      systemPrompt: {
+        stable: stableContent,
+        volatile: `## Task vars\nRepo: ${repo}\nTarget: ${target_id}`,
+      },
+      model: undefined,
+      sessionId: null,
+      cwd: '/tmp/wt',
+    });
+
+    const optsA = LiveClaudeAdapter.buildSdkOptions(makeOpts('org/repo-a', 1), ctx);
+    const optsB = LiveClaudeAdapter.buildSdkOptions(makeOpts('org/repo-b', 99), ctx);
+
+    const spA = optsA['systemPrompt'] as string[];
+    const spB = optsB['systemPrompt'] as string[];
+    const boundaryIdxA = spA.indexOf(BOUNDARY);
+    const boundaryIdxB = spB.indexOf(BOUNDARY);
+
+    // The stable section (before the boundary) must be identical regardless of job vars.
+    expect(spA.slice(0, boundaryIdxA)).toEqual(spB.slice(0, boundaryIdxB));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // resolveMaxTurns — per-method turn budget
 // ---------------------------------------------------------------------------
 
@@ -237,7 +363,7 @@ describe('resolveMaxTurns', () => {
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => {
   const querySpy = vi.fn();
-  return { query: querySpy };
+  return { query: querySpy, SYSTEM_PROMPT_DYNAMIC_BOUNDARY: '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__' };
 });
 
 describe('LiveClaudeAdapter maxTurns per method', () => {
