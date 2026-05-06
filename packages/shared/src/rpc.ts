@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { MethodSchema } from './methods.js';
-import { PersonaTypeSchema } from './personas.js';
+import { PersonaNameSchema, PersonaTypeSchema } from './personas.js';
 import { StatusSchema, FailureInfoSchema } from './status.js';
 
 /* ========================================================================== */
@@ -24,7 +24,7 @@ export type Repo = z.infer<typeof RepoSchema>;
 /* -------- Register -------- */
 
 export const RegisterRequestSchema = z.object({
-  name: z.string().min(1),
+  name: PersonaNameSchema,
   type: PersonaTypeSchema,
   version: z.string().min(1),
   url: z.string().url(),
@@ -77,7 +77,7 @@ export const DispatchRequestSchema = z.object({
    * differ in name from each other and the routing label is the source of
    * truth for which label to operate on.
    */
-  persona_name: z.string().min(1),
+  persona_name: PersonaNameSchema,
 });
 export type DispatchRequest = z.infer<typeof DispatchRequestSchema>;
 
