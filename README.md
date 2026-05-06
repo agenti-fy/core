@@ -458,7 +458,7 @@ CLEANUP=1 \
 
 ### Storage
 
-Coordinator state is in `${DATA_DIR}/coordinator.db` (SQLite, WAL mode). Migrations run at boot; the schema is `agents`, `sessions`, `jobs`, `repos`, `control`, `schema_migrations`. Sessions cascade-delete with their agent. Jobs do not — but `DELETE /agents/:id` orphan-marks active jobs in the same transaction so they don't block re-dispatch of their targets.
+Coordinator state is in `${DATA_DIR}/coordinator.db` (SQLite, WAL mode). Migrations run at boot; the full schema is documented in SPEC.md §11.1. Sessions cascade-delete with their agent. Jobs do not — but `DELETE /agents/:id` orphan-marks active jobs in the same transaction so they don't block re-dispatch of their targets.
 
 Agents are stateless across restarts. The in-memory job history is bounded (`JOB_HISTORY_CAPACITY`, default 500). Per-repo bare clones live under `WORKSPACES_DIR` and persist across runs; per-job worktrees are created and removed per skill invocation.
 
