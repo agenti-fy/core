@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import {
   PERSONA_DEFAULTS,
   isBuiltinPersona,
+  isValidPersonaName,
+  PERSONA_NAME_RE,
   type Method,
   type ParsedSoul,
 } from '@agentify/shared';
@@ -60,12 +62,31 @@ export interface ResolveOptions {
 }
 
 /**
+ * Thrown by resolveSkill() when opts.personaName fails the allowlist check.
+ * Propagates to the SkillRunner's outer catch, which routes it to markNeedsHuman
+ * so the operator sees a clear failure rather than an interpolated injection.
+ */
+export class InvalidPersonaNameError extends Error {
+  constructor(name: string) {
+    super(
+      `resolveSkill: personaName ${JSON.stringify(name)} is invalid — must match ${PERSONA_NAME_RE}. ` +
+      `Check the routing label on the GitHub issue for shell metacharacters or unsupported characters.`,
+    );
+    this.name = 'InvalidPersonaNameError';
+  }
+}
+
+/**
  * Build the prompt for a single skill invocation. The persona body comes from
  * the SOUL (or bundled default for built-ins); the skill body comes from the
  * SOUL override (`## Skill: <method>`) when present, otherwise the bundled
  * default. Template tokens like `{{repo}}` and `{{target_id}}` are interpolated.
  */
 export function resolveSkill(opts: ResolveOptions): ResolvedSkill {
+  if (!isValidPersonaName(opts.personaName)) {
+    throw new InvalidPersonaNameError(opts.personaName);
+  }
+
   const personaBody = personaBodyFor(opts.soul);
 
   const overridden = opts.soul.skillOverrides[opts.method];
