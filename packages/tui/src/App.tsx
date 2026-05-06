@@ -34,6 +34,7 @@ export function App({ api, baseUrl, pollIntervalMs = 1000 }: Props): React.React
   const [state, dispatch] = useReducer(reducer, initialState);
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [agentsCursor, setAgentsCursor] = useState(0);
+  const [jobsCursor, setJobsCursor] = useState(0);
   const [haltConfirm, setHaltConfirm] = useState(false);
 
   // Polling loop: each endpoint resolves independently so a single 500 doesn't
@@ -119,7 +120,7 @@ export function App({ api, baseUrl, pollIntervalMs = 1000 }: Props): React.React
     ) : screen === 'agents' ? (
       <Agents state={state} selectedIndex={agentsCursor} />
     ) : screen === 'jobs' ? (
-      <Jobs state={state} />
+      <Jobs state={state} selectedIndex={jobsCursor} />
     ) : screen === 'logs' ? (
       <Logs state={state} rows={LOGS_VISIBLE_ROWS} />
     ) : (
@@ -148,6 +149,7 @@ export function App({ api, baseUrl, pollIntervalMs = 1000 }: Props): React.React
           { key: 'h', label: state.halted ? 'resume' : 'halt' },
           { key: 'q', label: 'quit' },
           ...(screen === 'agents' ? [{ key: 'R', label: 'reset agent' }] : []),
+          ...(screen === 'jobs' ? [{ key: '↑↓', label: 'select job' }] : []),
           ...(screen === 'logs'
             ? [
                 { key: '1-5', label: 'log level' },
@@ -170,6 +172,8 @@ export function App({ api, baseUrl, pollIntervalMs = 1000 }: Props): React.React
           setScreen={setScreen}
           agentsCursor={agentsCursor}
           setAgentsCursor={setAgentsCursor}
+          jobsCursor={jobsCursor}
+          setJobsCursor={setJobsCursor}
           haltConfirm={haltConfirm}
           setHaltConfirm={setHaltConfirm}
           dispatch={dispatch}
@@ -186,6 +190,8 @@ interface InputHandlerProps {
   setScreen: (s: Screen) => void;
   agentsCursor: number;
   setAgentsCursor: React.Dispatch<React.SetStateAction<number>>;
+  jobsCursor: number;
+  setJobsCursor: React.Dispatch<React.SetStateAction<number>>;
   haltConfirm: boolean;
   setHaltConfirm: (v: boolean) => void;
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
@@ -198,6 +204,8 @@ function InputHandler({
   setScreen,
   agentsCursor,
   setAgentsCursor,
+  jobsCursor,
+  setJobsCursor,
   haltConfirm,
   setHaltConfirm,
   dispatch,
@@ -260,6 +268,11 @@ function InputHandler({
             }),
           );
       }
+    }
+    if (screen === 'jobs' && state.recentJobs.length > 0) {
+      const max = Math.min(state.recentJobs.length, 25) - 1;
+      if (key.upArrow) setJobsCursor((c) => Math.max(0, Math.min(max, c - 1)));
+      if (key.downArrow) setJobsCursor((c) => Math.max(0, Math.min(max, c + 1)));
     }
     if (screen === 'logs') {
       if (input === '1') dispatch({ type: 'log_set_min_level', level: 10 });
