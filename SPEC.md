@@ -420,6 +420,7 @@ This avoids embedding "what to do next" inference inside a single addressing ski
   1. Uses the supplied `session_id` to invoke the Claude Code SDK (resume or fresh).
   2. After completion, `PUT /sessions/{agent_id}/{org}/{repo}` with the session id from the SDK.
 - **Invalidate on auth/SDK errors only**: if the job ends with `outcome ∈ {sdk_failure, auth_failure}`, the agent does NOT save the session id (effectively dropping it). For ordinary `task_error`, the session is preserved so context isn't lost.
+- **Stateless-method carve-out**: `review` and `merge` never resume a prior session and never persist a new one. These methods read fresh state and make a point-in-time decision; carrying forward the conversation from a previous PR review wastes cache-read tokens on stale context. `plan`, `implement`, and `address_review` form a productive thread where accumulated context improves output quality. Existing rows in the coordinator `sessions` table are unaffected — they age out naturally and are refreshed on the next plan/implement job.
 - The coordinator also exposes `GET /sessions/{agent_id}/{org}/{repo}` for out-of-band lookups (debug / TUI), but the dispatch flow doesn't depend on it.
 
 ## 10. GitHub integration

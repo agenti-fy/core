@@ -352,6 +352,29 @@ describe('SkillRunner.run', () => {
     expect(d.coord.putCalls).toHaveLength(0);
   });
 
+  it('review: does not persist session and passes null sessionId to adapter even when coordinator supplies one', async () => {
+    d.adapter.next = { outcome: 'success', sessionId: 'sess-review', artifacts: {} };
+    d.state.startJob({ id: 'j_1', method: 'review', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+    await runOnce(d.runner, 'review', 'coord-supplied-session');
+
+    // Adapter must receive null — the agent nulls it out for stateless methods.
+    expect(d.adapter.lastOpts?.sessionId).toBeNull();
+    // Session must not be persisted back to the coordinator.
+    expect(d.coord.putCalls).toHaveLength(0);
+  });
+
+  it('merge: does not persist session and passes null sessionId to adapter even when coordinator supplies one', async () => {
+    // prState defaults to merged=true/closed so verification passes.
+    d.adapter.next = { outcome: 'success', sessionId: 'sess-merge', artifacts: {}, finalText: 'merged' };
+    d.state.startJob({ id: 'j_1', method: 'merge', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+    await runOnce(d.runner, 'merge', 'coord-supplied-session');
+
+    expect(d.adapter.lastOpts?.sessionId).toBeNull();
+    expect(d.coord.putCalls).toHaveLength(0);
+  });
+
   it('injects GH_TOKEN into process.env for the adapter run and restores it after', async () => {
     // Capture the env that the adapter sees mid-run; restore must happen after.
     const seen: { mid: string | undefined; restored: string | undefined } = {
