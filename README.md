@@ -31,6 +31,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 ## Contents
 
+- [Security considerations](#security-considerations)
 - [Quick start](#quick-start)
 - [How it works](#how-it-works)
   - [Routing labels](#routing-labels)
@@ -49,6 +50,24 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history.
   - [Logs and metrics](#logs-and-metrics)
 - [Development](#development)
 - [Reference](#reference)
+
+## Security considerations
+
+Every GitHub field that a non-agent user can write — issue and PR titles, bodies, labels, review comments, diff text — is **untrusted attacker input**. The system is hardened against two attack classes:
+
+- **Persona-label shell injection.** Three independent validation layers (`parseRoutingLabel` in `packages/shared/src/labels.ts`, `PersonaNameSchema` in `packages/shared/src/personas.ts`, and a fail-closed check in `packages/agent/src/skills/resolver.ts`) ensure that the persona name extracted from an `agent:<persona>:<method>` label can never contain shell metacharacters before it reaches a skill prompt.
+- **Prompt injection via issue/PR text.** A coordinator-side hijack detector (`packages/coordinator/src/security/hijack-detector.ts`) screens issue bodies for known injection patterns before dispatching work; bodies that match are routed to `needs-human` instead. A `SECURITY_PREAMBLE` prepended to every agent system prompt instructs Claude that `gh issue view` / `gh pr view` / `gh pr diff` output is DATA, not an instruction extension.
+
+Neither the hijack detector nor the security preamble is a hard boundary — they raise the cost of an attack, they do not make it impossible. The known residual gap (diff code-comment injection) is documented in [SPEC.md §22](./SPEC.md#22-security-model).
+
+**Operator responsibilities:**
+
+- **Scope the GitHub App installation.** Install the App only on repositories you intend to automate. Every repo in the installation list is part of the attack surface; audit it periodically via the App's installation settings.
+- **Restrict who can interact with watched issues and PRs.** Anyone who can open issues or post comments in a managed repo can attempt injection. Use GitHub's interaction limits, branch protection rules, or a dedicated sandbox organisation to reduce exposure from untrusted contributors.
+- **Monitor `agentify_coordinator_hijack_attempts_total`.** This Prometheus counter (labelled `{repo, pattern}`) increments each time the hijack detector diverts an issue to `needs-human`. A spike indicates active probing; a sustained zero does not mean the repo is clean — it means no pattern matched.
+- **Review `needs-human` issues promptly.** Both task failures and hijack detections land on this label. An unreviewed `needs-human` stalls the workflow; a confirmed injection attempt should be reported and the author blocked via GitHub's abuse tooling.
+
+For the full threat model — trust zones, validation contract, prompt-injection mitigations, known residuals, and the operator remediation playbook — see [SPEC.md §22 Security model](./SPEC.md#22-security-model).
 
 ## Quick start
 
