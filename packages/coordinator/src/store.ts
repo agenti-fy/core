@@ -222,6 +222,25 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    id: 9,
+    name: 'hijack-flagged-targets',
+    up: (db) => {
+      // Tracks issues the work-poller has flagged as potential prompt-injection
+      // attempts. body_hash lets us detect body edits: if the attacker changes
+      // the body (or an operator removes the injection), the hash changes and
+      // the poller clears the entry on the next poll cycle.
+      db.exec(`
+        CREATE TABLE hijack_flagged (
+          repo TEXT NOT NULL,
+          target_id INTEGER NOT NULL,
+          body_hash TEXT NOT NULL,
+          flagged_at INTEGER NOT NULL,
+          PRIMARY KEY (repo, target_id)
+        );
+      `);
+    },
+  },
+  {
     id: 5,
     name: 'agents-supported-methods-json-check',
     up: (db) => {
@@ -659,6 +678,28 @@ export class CoordinatorStore {
     return this.stmts.listDepBlockedForRepo.all({ repo }).map((r) => r.target_id);
   }
 
+  /* -------------------- hijack_flagged -------------------- */
+
+  /**
+   * True if this exact body hash is already recorded as flagged. A different
+   * hash means the body changed, so the caller should re-flag and post a new
+   * comment.
+   */
+  isHijackFlagged(repo: string, target_id: number, body_hash: string): boolean {
+    const row = this.stmts.getHijackFlagged.get({ repo, target_id });
+    return row !== undefined && row.body_hash === body_hash;
+  }
+
+  /** Record or update the hijack flag for a (repo, issue) pair. Idempotent. */
+  markHijackFlagged(repo: string, target_id: number, body_hash: string, when: number = Date.now()): void {
+    this.stmts.markHijackFlagged.run({ repo, target_id, body_hash, when });
+  }
+
+  /** Remove the hijack flag. Idempotent. */
+  clearHijackFlagged(repo: string, target_id: number): void {
+    this.stmts.clearHijackFlagged.run({ repo, target_id });
+  }
+
   /* -------------------- plans -------------------- */
 
   /**
@@ -853,6 +894,19 @@ function prepareStatements(db: Database.Database) {
     ),
     listDepBlockedForRepo: db.prepare<{ repo: string }, { target_id: number }>(
       'SELECT target_id FROM dep_blocked WHERE repo = @repo ORDER BY target_id',
+    ),
+
+    // hijack_flagged
+    getHijackFlagged: db.prepare<{ repo: string; target_id: number }, { body_hash: string }>(
+      'SELECT body_hash FROM hijack_flagged WHERE repo = @repo AND target_id = @target_id',
+    ),
+    markHijackFlagged: db.prepare(
+      `INSERT INTO hijack_flagged (repo, target_id, body_hash, flagged_at)
+       VALUES (@repo, @target_id, @body_hash, @when)
+       ON CONFLICT(repo, target_id) DO UPDATE SET body_hash = excluded.body_hash, flagged_at = excluded.flagged_at`,
+    ),
+    clearHijackFlagged: db.prepare(
+      'DELETE FROM hijack_flagged WHERE repo = @repo AND target_id = @target_id',
     ),
 
     // plans

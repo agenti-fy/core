@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Logger } from 'pino';
 import {
   normalizeIssueLabels,
@@ -9,6 +10,7 @@ import {
 import type { CoordinatorStore } from '../store.js';
 import type { GitHubClient } from '../github/client.js';
 import { hasHaltLabel, parseRoutingLabels } from './labels.js';
+import { detectHijackAttempt } from '../security/hijack-detector.js';
 
 interface IssueLike {
   number: number;
@@ -26,6 +28,7 @@ interface IssueLike {
 type EvalResult =
   | { kind: 'no-routing' }
   | { kind: 'blocked'; blockedBy: number }
+  | { kind: 'flagged'; matched: string[] }
   | { kind: 'ready'; items: PendingWorkItem[] };
 
 /**
@@ -48,6 +51,15 @@ async function evaluateIssue(
   const labels = normalizeIssueLabels(issue.labels);
   const routings = parseRoutingLabels(labels);
   if (routings.length === 0) return { kind: 'no-routing' };
+
+  const hijack = detectHijackAttempt(issue.body ?? '');
+  if (hijack.hit) {
+    logger.warn(
+      { repo, target: issue.number, matched: hijack.matched },
+      'hijack attempt detected in issue body',
+    );
+    return { kind: 'flagged', matched: hijack.matched! };
+  }
 
   const isPr = issue.pull_request !== undefined && issue.pull_request !== null;
   if (!isPr) {
@@ -203,6 +215,47 @@ export async function pollDueRepos(
   };
 }
 
+function hashBody(body: string): string {
+  return createHash('sha256').update(body).digest('hex').slice(0, 16);
+}
+
+/**
+ * Best-effort: add the `needs-human` label and post a comment explaining which
+ * patterns matched. Each call is independent — a label-add failure doesn't
+ * suppress the comment attempt, and vice versa.
+ */
+async function applyHijackFlag(
+  github: GitHubClient,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  matched: string[],
+  logger: Logger,
+): Promise<void> {
+  try {
+    await github.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: ['needs-human'] });
+  } catch (err) {
+    logger.warn(
+      { owner, repo, issue: issueNumber, err: err instanceof Error ? err.message : String(err) },
+      'hijack flag: failed to add needs-human label',
+    );
+  }
+  try {
+    const patternList = matched.map((m) => `- \`${m}\``).join('\n');
+    await github.issues.createComment({
+      owner,
+      repo,
+      issue_number: issueNumber,
+      body: `**Possible prompt-injection attempt detected**\n\nMatched patterns:\n${patternList}\n\nThis issue has been paused pending operator review. Remove the \`needs-human\` label to resume routing once the body has been inspected.`,
+    });
+  } catch (err) {
+    logger.warn(
+      { owner, repo, issue: issueNumber, err: err instanceof Error ? err.message : String(err) },
+      'hijack flag: failed to post comment',
+    );
+  }
+}
+
 async function pollRepo(
   github: GitHubClient,
   store: CoordinatorStore,
@@ -264,17 +317,25 @@ async function pollRepo(
       if (hasHaltLabel(labels)) haltSeen = true;
 
       const result = await evaluateIssue(issue, repo, fetchDepState, logger);
-      if (result.kind === 'blocked') {
+      if (result.kind === 'flagged') {
+        const bodyHash = hashBody(issue.body ?? '');
+        if (!store.isHijackFlagged(repo, issue.number, bodyHash)) {
+          await applyHijackFlag(github, owner, name, issue.number, result.matched, logger);
+          store.markHijackFlagged(repo, issue.number, bodyHash);
+        }
+        store.clearDepBlocked(repo, issue.number);
+      } else if (result.kind === 'blocked') {
         store.markDepBlocked(repo, issue.number);
+        store.clearHijackFlagged(repo, issue.number);
         skippedByDeps++;
       } else if (result.kind === 'ready') {
-        // If this issue was previously dep-blocked, deps are now resolved.
         store.clearDepBlocked(repo, issue.number);
+        store.clearHijackFlagged(repo, issue.number);
         items.push(...result.items);
       } else {
-        // No routing labels — clear any stale dep_blocked entry (skill
-        // removed labels, operator relabeled, etc.).
+        // No routing labels — clear any stale tracking entries.
         store.clearDepBlocked(repo, issue.number);
+        store.clearHijackFlagged(repo, issue.number);
       }
     }
   }
@@ -319,12 +380,20 @@ async function pollRepo(
     }
 
     const result = await evaluateIssue(issue, repo, fetchDepState, logger);
-    if (result.kind === 'blocked') {
+    if (result.kind === 'flagged') {
+      const bodyHash = hashBody(issue.body ?? '');
+      if (!store.isHijackFlagged(repo, targetId, bodyHash)) {
+        await applyHijackFlag(github, owner, name, targetId, result.matched, logger);
+        store.markHijackFlagged(repo, targetId, bodyHash);
+      }
+      store.clearDepBlocked(repo, targetId);
+    } else if (result.kind === 'blocked') {
       // Still blocked — leave the entry; refresh blocked_at for diagnostics.
       store.markDepBlocked(repo, targetId);
       skippedByDeps++;
     } else if (result.kind === 'ready') {
       store.clearDepBlocked(repo, targetId);
+      store.clearHijackFlagged(repo, targetId);
       items.push(...result.items);
       logger.info(
         { repo, target: targetId, routings: result.items.length },
@@ -333,6 +402,7 @@ async function pollRepo(
     } else {
       // No routing labels anymore — drop the entry.
       store.clearDepBlocked(repo, targetId);
+      store.clearHijackFlagged(repo, targetId);
     }
   }
 
