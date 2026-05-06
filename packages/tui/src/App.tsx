@@ -114,6 +114,7 @@ export function App({ api, baseUrl, pollIntervalMs = 1000 }: Props): React.React
     return () => clearInterval(t);
   }, []);
 
+  // re-clamp on render: recentJobs can shrink between keypresses (jobs aging out)
   const jobsMax = Math.max(0, Math.min(state.recentJobs.length, 25) - 1);
   const safeJobsCursor = Math.min(jobsCursor, jobsMax);
 
