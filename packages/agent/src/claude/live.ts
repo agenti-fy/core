@@ -21,8 +21,13 @@ export interface LiveClaudeAdapterOptions {
    * without restarting the process.
    */
   maxTurnsForMethod: (method: Method) => number;
-  /** Hard cap on overall wall-clock duration per skill run, in ms. 0 disables. */
-  timeoutMs: number;
+  /**
+   * Called inside `run()` to get the wall-clock deadline for the current
+   * invocation, in ms. Reading at call time (not construction) means a
+   * POST /reset that mutates config.claudeTimeoutMs via applyHotReloadable()
+   * is picked up on the next call without restarting the process. 0 disables.
+   */
+  timeoutMsGetter: () => number;
   /** Permission mode for tool calls. Defaults to bypassPermissions for headless ops. */
   permissionMode?: 'bypassPermissions' | 'acceptEdits' | 'default' | 'plan';
 }
@@ -78,13 +83,13 @@ const TOOLS_BY_METHOD: Record<Method, { allowed?: string[]; disallowed?: string[
 export class LiveClaudeAdapter implements ClaudeAdapter {
   private readonly logger: Logger;
   private readonly maxTurnsForMethod: (method: Method) => number;
-  private readonly timeoutMs: number;
+  private readonly timeoutMsGetter: () => number;
   private readonly permissionMode: NonNullable<LiveClaudeAdapterOptions['permissionMode']>;
 
   constructor(opts: LiveClaudeAdapterOptions) {
     this.logger = opts.logger;
     this.maxTurnsForMethod = opts.maxTurnsForMethod;
-    this.timeoutMs = opts.timeoutMs;
+    this.timeoutMsGetter = opts.timeoutMsGetter;
     this.permissionMode = opts.permissionMode ?? 'bypassPermissions';
   }
 
@@ -138,8 +143,9 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
     const ac = new AbortController();
     // ac.signal.aborted is the only signal we read in the catch — no need to
     // pass a reason that nobody inspects.
+    const timeoutMs = this.timeoutMsGetter();
     const timer =
-      this.timeoutMs > 0 ? setTimeout(() => ac.abort(), this.timeoutMs) : null;
+      timeoutMs > 0 ? setTimeout(() => ac.abort(), timeoutMs) : null;
     timer?.unref();
 
     // Periodic heartbeat so operators watching /logs/stream see progress on

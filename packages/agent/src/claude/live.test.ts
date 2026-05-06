@@ -259,7 +259,7 @@ describe('LiveClaudeAdapter maxTurns per method', () => {
     const adapter = new LiveClaudeAdapter({
       logger: silentLog,
       maxTurnsForMethod: (m) => resolveMaxTurns(cfg, m),
-      timeoutMs: 0,
+      timeoutMsGetter: () => 0,
     });
 
     await adapter.run(baseOpts);
@@ -274,7 +274,7 @@ describe('LiveClaudeAdapter maxTurns per method', () => {
     const adapter = new LiveClaudeAdapter({
       logger: silentLog,
       maxTurnsForMethod: (m) => resolveMaxTurns(cfg, m),
-      timeoutMs: 0,
+      timeoutMsGetter: () => 0,
     });
 
     await adapter.run(baseOpts);
@@ -288,7 +288,7 @@ describe('LiveClaudeAdapter maxTurns per method', () => {
     const adapter = new LiveClaudeAdapter({
       logger: silentLog,
       maxTurnsForMethod: (m) => resolveMaxTurns(cfg, m),
-      timeoutMs: 0,
+      timeoutMsGetter: () => 0,
     });
 
     const methods: Method[] = ['plan', 'implement', 'review', 'address_review', 'merge'];
@@ -331,6 +331,13 @@ describe('applyHotReloadable', () => {
     expect(cfg.claudeMaxTurnsMerge).toBe(25);
   });
 
+  it('propagates claudeTimeoutMs from fresh to config', () => {
+    const cfg = loadConfig(baseEnv());
+    const fresh = loadConfig({ ...baseEnv(), CLAUDE_TIMEOUT_MS: '60000' });
+    applyHotReloadable(cfg, fresh);
+    expect(cfg.claudeTimeoutMs).toBe(60_000);
+  });
+
   it('does NOT mutate static-at-boot fields (host, port, coordinatorUrl)', () => {
     const cfg = loadConfig(baseEnv());
     const originalHost = cfg.host;
@@ -341,13 +348,15 @@ describe('applyHotReloadable', () => {
       ...baseEnv(),
       COORDINATOR_URL: 'http://other-coordinator:9999',
       CLAUDE_MAX_TURNS_MERGE: '10',
+      CLAUDE_TIMEOUT_MS: '30000',
     });
     applyHotReloadable(cfg, fresh);
     expect(cfg.host).toBe(originalHost);
     expect(cfg.port).toBe(originalPort);
     expect(cfg.coordinatorUrl).toBe(originalCoordinatorUrl);
-    // Only the turn budget was updated.
+    // Turn budget and timeout were updated.
     expect(cfg.claudeMaxTurnsMerge).toBe(10);
+    expect(cfg.claudeTimeoutMs).toBe(30_000);
   });
 });
 
@@ -384,7 +393,7 @@ describe('LiveClaudeAdapter hot-reload', () => {
     const adapter = new LiveClaudeAdapter({
       logger: silentLog,
       maxTurnsForMethod: (m) => resolveMaxTurns(cfg, m),
-      timeoutMs: 0,
+      timeoutMsGetter: () => 0,
     });
 
     // First run uses the original default (50).
@@ -405,5 +414,66 @@ describe('LiveClaudeAdapter hot-reload', () => {
     expect(
       (querySpy.mock.calls[0]![0] as { options: Record<string, unknown> }).options.maxTurns,
     ).toBe(15);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LiveClaudeAdapter hot-reload (timeoutMs) — getter called at run() time
+// ---------------------------------------------------------------------------
+
+describe('LiveClaudeAdapter hot-reload (timeoutMs)', () => {
+  let querySpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const sdk = await import('@anthropic-ai/claude-agent-sdk');
+    querySpy = sdk.query as ReturnType<typeof vi.fn>;
+    querySpy.mockReset();
+    querySpy.mockReturnValue({
+      [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }),
+    });
+  });
+
+  const baseOpts = {
+    method: 'merge' as Method,
+    repo: 'acme/api',
+    target_id: 7,
+    personaBody: '',
+    skillPrompt: 'merge it',
+    systemPrompt: 'merge it',
+    model: undefined,
+    sessionId: null,
+    cwd: '/tmp/wt',
+  };
+
+  it('picks up a mutated config.claudeTimeoutMs on the next run()', async () => {
+    const cfg = loadConfig(baseEnv());
+    const adapter = new LiveClaudeAdapter({
+      logger: silentLog,
+      maxTurnsForMethod: (m) => resolveMaxTurns(cfg, m),
+      timeoutMsGetter: () => cfg.claudeTimeoutMs,
+    });
+
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+
+    // First run: default claudeTimeoutMs (15 * 60 * 1000 = 900_000).
+    await adapter.run(baseOpts);
+    const firstCalls = setTimeoutSpy.mock.calls.filter(([, ms]) => ms !== 30_000);
+    expect(firstCalls[0]?.[1]).toBe(15 * 60 * 1000);
+
+    // Simulate applyHotReloadable() writing a new claudeTimeoutMs.
+    cfg.claudeTimeoutMs = 60_000;
+    setTimeoutSpy.mockClear();
+    querySpy.mockReset();
+    querySpy.mockReturnValue({
+      [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }),
+    });
+
+    // Second run should schedule the abort timer with the new value without
+    // rebuilding the adapter.
+    await adapter.run(baseOpts);
+    const secondCalls = setTimeoutSpy.mock.calls.filter(([, ms]) => ms !== 30_000);
+    expect(secondCalls[0]?.[1]).toBe(60_000);
+
+    setTimeoutSpy.mockRestore();
   });
 });

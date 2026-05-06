@@ -37,7 +37,7 @@ function pickClaudeAdapter(config: Config, logger: Logger): ClaudeAdapter {
     return new LiveClaudeAdapter({
       logger,
       maxTurnsForMethod: (method) => resolveMaxTurns(config, method),
-      timeoutMs: config.claudeTimeoutMs,
+      timeoutMsGetter: () => config.claudeTimeoutMs,
     });
   }
   logger.warn('using StubClaudeAdapter — no real Claude calls will be made');
