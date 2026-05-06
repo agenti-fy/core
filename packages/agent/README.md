@@ -123,6 +123,21 @@ Controlled by `CLAUDE_ADAPTER` (default `auto`):
 
 Source: `src/index.ts` `pickClaudeAdapter()`.
 
+## Turn budgets
+
+`LiveClaudeAdapter` enforces a per-method hard cap on Claude Agent SDK turns.
+Each method has its own env var and default:
+
+| Env var | Default | Rationale |
+|---|---|---|
+| `CLAUDE_MAX_TURNS_PLAN` | 100 | Plan reads many files; needs headroom but rarely loops |
+| `CLAUDE_MAX_TURNS_IMPLEMENT` | 250 | Walking a repo + editing + tests can run 50–150 turns |
+| `CLAUDE_MAX_TURNS_REVIEW` | 60 | Review reads the diff and posts a comment; rarely deep |
+| `CLAUDE_MAX_TURNS_ADDRESS_REVIEW` | 200 | May need to apply many comments across files |
+| `CLAUDE_MAX_TURNS_MERGE` | 50 | Merge is narrow: rebase, push, merge; 50 is generous |
+
+`CLAUDE_MAX_TURNS` (legacy) overrides all per-method defaults when set; per-method vars take precedence over it. Budget exhaustion produces a `task_error` outcome and applies `needs-human` to the issue (same path as a timeout).
+
 ## Local dev
 
 Run without GitHub or a real API key:

@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { Logger } from 'pino';
 import { METHODS, reportConfigError, type ParsedSoul } from '@agentify/shared';
-import { loadConfig, type Config } from './config.js';
+import { loadConfig, resolveMaxTurns, type Config } from './config.js';
 import { createLogger } from './logger.js';
 import { loadSoulFromFile } from './soul/parser.js';
 import { SoulRef } from './soul/ref.js';
@@ -36,7 +36,7 @@ function pickClaudeAdapter(config: Config, logger: Logger): ClaudeAdapter {
     );
     return new LiveClaudeAdapter({
       logger,
-      maxTurns: config.claudeMaxTurns,
+      maxTurnsForMethod: (method) => resolveMaxTurns(config, method),
       timeoutMs: config.claudeTimeoutMs,
     });
   }

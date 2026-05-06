@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { boolFlag } from '@agentify/shared';
+import { boolFlag, type Method } from '@agentify/shared';
 
 const ConfigSchema = z.object({
   port: z.coerce.number().int().positive().default(8080),
@@ -30,13 +30,23 @@ const ConfigSchema = z.object({
   jobHistoryCapacity: z.coerce.number().int().positive().default(500),
 
   /**
-   * Hard cap on Claude Agent SDK turns per skill run. A "turn" is one
-   * model→tool round-trip; a typical implement that walks the repo, edits a
-   * few files, runs tests, and pushes a PR can spend 50–150 turns. Default
-   * of 60 was hitting the cap on real plan/implement runs. 500 leaves
-   * generous headroom while still bounding runaway loops.
+   * Global turn-cap fallback. Per-method vars (CLAUDE_MAX_TURNS_PLAN, etc.)
+   * take precedence; this covers any method whose per-method var is unset.
+   * Kept for one minor-version of backward compat before deprecation.
    */
   claudeMaxTurns: z.coerce.number().int().positive().default(500),
+
+  /**
+   * Per-method hard caps. Each env var overrides the global CLAUDE_MAX_TURNS
+   * fallback for its method. Defaults are sized to real observed workloads:
+   * merge is the tightest (≤50 turns normal), plan needs headroom for file
+   * reads across a large repo.
+   */
+  claudeMaxTurnsPlan: z.coerce.number().int().positive().default(100),
+  claudeMaxTurnsImplement: z.coerce.number().int().positive().default(250),
+  claudeMaxTurnsReview: z.coerce.number().int().positive().default(60),
+  claudeMaxTurnsAddressReview: z.coerce.number().int().positive().default(200),
+  claudeMaxTurnsMerge: z.coerce.number().int().positive().default(50),
 
   /** SDK call timeout. 0 disables. */
   claudeTimeoutMs: z.coerce.number().int().nonnegative().default(15 * 60 * 1000),
@@ -89,6 +99,17 @@ const ConfigSchema = z.object({
 
 export type Config = z.infer<typeof ConfigSchema>;
 
+/** Return the turn cap for `method`, honouring per-method overrides. */
+export function resolveMaxTurns(config: Config, method: Method): number {
+  switch (method) {
+    case 'plan':           return config.claudeMaxTurnsPlan;
+    case 'implement':      return config.claudeMaxTurnsImplement;
+    case 'review':         return config.claudeMaxTurnsReview;
+    case 'address_review': return config.claudeMaxTurnsAddressReview;
+    case 'merge':          return config.claudeMaxTurnsMerge;
+  }
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return ConfigSchema.parse({
     port: env.AGENT_PORT ?? env.PORT,
@@ -104,6 +125,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     coordinatorTimeoutMs: env.COORDINATOR_TIMEOUT_MS,
     jobHistoryCapacity: env.JOB_HISTORY_CAPACITY,
     claudeMaxTurns: env.CLAUDE_MAX_TURNS,
+    // Per-method vars fall back to the global CLAUDE_MAX_TURNS when unset so
+    // operators who only set the global don't need to touch per-method vars.
+    claudeMaxTurnsPlan: env.CLAUDE_MAX_TURNS_PLAN ?? env.CLAUDE_MAX_TURNS,
+    claudeMaxTurnsImplement: env.CLAUDE_MAX_TURNS_IMPLEMENT ?? env.CLAUDE_MAX_TURNS,
+    claudeMaxTurnsReview: env.CLAUDE_MAX_TURNS_REVIEW ?? env.CLAUDE_MAX_TURNS,
+    claudeMaxTurnsAddressReview: env.CLAUDE_MAX_TURNS_ADDRESS_REVIEW ?? env.CLAUDE_MAX_TURNS,
+    claudeMaxTurnsMerge: env.CLAUDE_MAX_TURNS_MERGE ?? env.CLAUDE_MAX_TURNS,
     claudeTimeoutMs: env.CLAUDE_TIMEOUT_MS,
     githubAppId: env.GITHUB_APP_ID,
     githubAppPrivateKey: env.GITHUB_APP_PRIVATE_KEY,
