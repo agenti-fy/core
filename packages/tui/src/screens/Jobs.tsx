@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Box, Text } from 'ink';
 import { JobResultSchema, type JobRecord, type JobResult } from '@agentify/shared';
 import type { AppState } from '../store.js';
@@ -22,8 +22,35 @@ function parseResult(resultJson: string | null): JobResult | undefined {
   }
 }
 
+type CacheEntry = { completed_at: number | null; parsed: JobResult | undefined };
+export type ParsedCache = Map<string, CacheEntry>;
+
+/**
+ * Builds a ParsedCache for `jobs`, reusing entries from `prevCache` when
+ * `(job_id, completed_at)` is unchanged so `JobResultSchema.parse` is called
+ * at most once per completed job. Keys for jobs no longer in the slice are
+ * dropped, keeping the cache bounded.
+ */
+export function buildParsedResultCache(jobs: JobRecord[], prevCache: ParsedCache): ParsedCache {
+  const next: ParsedCache = new Map();
+  for (const job of jobs) {
+    const completedAt = job.completed_at ?? null;
+    const prev = prevCache.get(job.job_id);
+    if (prev !== undefined && prev.completed_at === completedAt) {
+      next.set(job.job_id, prev);
+    } else {
+      next.set(job.job_id, { completed_at: completedAt, parsed: parseResult(job.result_json) });
+    }
+  }
+  return next;
+}
+
 export function Jobs({ state, selectedIndex }: { state: AppState; selectedIndex: number }): React.ReactElement {
   const recentSlice = state.recentJobs.slice(0, 25);
+  const parsedCacheRef = useRef<ParsedCache>(new Map());
+  parsedCacheRef.current = buildParsedResultCache(recentSlice, parsedCacheRef.current);
+  const parsedMap = parsedCacheRef.current;
+
   const selectedJob = recentSlice[selectedIndex];
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
@@ -49,11 +76,14 @@ export function Jobs({ state, selectedIndex }: { state: AppState; selectedIndex:
               job={j}
               agents={state.agents}
               selected={i === selectedIndex}
+              parsed={parsedMap.get(j.job_id)?.parsed}
             />
           ))
         )}
       </Box>
-      {selectedJob && <JobDetail job={selectedJob} />}
+      {selectedJob && (
+        <JobDetail job={selectedJob} parsed={parsedMap.get(selectedJob.job_id)?.parsed} />
+      )}
     </Box>
   );
 }
@@ -85,10 +115,12 @@ function RecentJobRow({
   job,
   agents,
   selected,
+  parsed,
 }: {
   job: JobRecord;
   agents: AppState['agents'];
   selected: boolean;
+  parsed: JobResult | undefined;
 }): React.ReactElement {
   const agent = agents.find((a) => a.agent_id === job.agent_id);
   const outcomeColor =
@@ -99,8 +131,7 @@ function RecentJobRow({
         : 'red';
   const completedAt = job.completed_at ?? job.dispatched_at;
   const ago = formatAgo(Date.now() - completedAt);
-  const result = parseResult(job.result_json);
-  const cost = result?.cost_usd;
+  const cost = parsed?.cost_usd;
   const costStr = formatCost(cost);
   const costZero = cost === undefined || cost === 0;
   return (
@@ -125,10 +156,15 @@ function RecentJobRow({
   );
 }
 
-function JobDetail({ job }: { job: JobRecord }): React.ReactElement | null {
-  const result = parseResult(job.result_json);
-  if (!result) return null;
-  const { usage_input, usage_output, usage_cache_read, usage_cache_write, cost_usd } = result;
+function JobDetail({
+  job,
+  parsed,
+}: {
+  job: JobRecord;
+  parsed: JobResult | undefined;
+}): React.ReactElement | null {
+  if (!parsed) return null;
+  const { usage_input, usage_output, usage_cache_read, usage_cache_write, cost_usd } = parsed;
   const hasData =
     usage_input !== undefined ||
     usage_output !== undefined ||
