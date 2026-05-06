@@ -118,11 +118,14 @@ export function App({ api, baseUrl, pollIntervalMs = 1000 }: Props): React.React
   const jobsMax = Math.max(0, Math.min(state.recentJobs.length, 25) - 1);
   const safeJobsCursor = Math.min(jobsCursor, jobsMax);
 
+  const agentsMax = Math.max(0, state.agents.length - 1);
+  const safeAgentsCursor = Math.min(agentsCursor, agentsMax);
+
   const screenView =
     screen === 'dashboard' ? (
       <Dashboard state={state} />
     ) : screen === 'agents' ? (
-      <Agents state={state} selectedIndex={agentsCursor} />
+      <Agents state={state} selectedIndex={safeAgentsCursor} />
     ) : screen === 'jobs' ? (
       <Jobs state={state} selectedIndex={safeJobsCursor} />
     ) : screen === 'logs' ? (
@@ -174,7 +177,7 @@ export function App({ api, baseUrl, pollIntervalMs = 1000 }: Props): React.React
           state={state}
           screen={screen}
           setScreen={setScreen}
-          agentsCursor={agentsCursor}
+          agentsCursor={safeAgentsCursor}
           setAgentsCursor={setAgentsCursor}
           jobsCursor={safeJobsCursor}
           setJobsCursor={setJobsCursor}
@@ -252,8 +255,8 @@ function InputHandler({
 
     if (screen === 'agents' && state.agents.length > 0) {
       const max = state.agents.length - 1;
-      if (key.upArrow) setAgentsCursor((c) => Math.max(0, Math.min(max, c - 1)));
-      if (key.downArrow) setAgentsCursor((c) => Math.max(0, Math.min(max, c + 1)));
+      if (key.upArrow) setAgentsCursor(Math.max(0, Math.min(max, agentsCursor - 1)));
+      if (key.downArrow) setAgentsCursor(Math.max(0, Math.min(max, agentsCursor + 1)));
       if (input === 'R' && state.agents[agentsCursor]) {
         const id = state.agents[agentsCursor].agent_id;
         const name = state.agents[agentsCursor].name;
