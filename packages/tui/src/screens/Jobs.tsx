@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Box, Text } from 'ink';
 import { JobResultSchema, type JobRecord, type JobResult } from '@agentify/shared';
 import type { AppState } from '../store.js';
@@ -47,9 +47,14 @@ export function buildParsedResultCache(jobs: JobRecord[], prevCache: ParsedCache
 
 export function Jobs({ state, selectedIndex }: { state: AppState; selectedIndex: number }): React.ReactElement {
   const recentSlice = state.recentJobs.slice(0, 25);
-  const parsedCacheRef = useRef<ParsedCache>(new Map());
-  parsedCacheRef.current = buildParsedResultCache(recentSlice, parsedCacheRef.current);
-  const parsedMap = parsedCacheRef.current;
+  const prevCacheRef = useRef<ParsedCache>(new Map());
+  const parsedMap = useMemo(
+    () => buildParsedResultCache(recentSlice, prevCacheRef.current),
+    [recentSlice],
+  );
+  useEffect(() => {
+    prevCacheRef.current = parsedMap;
+  });
 
   const selectedJob = recentSlice[selectedIndex];
   return (
