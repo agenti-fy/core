@@ -114,13 +114,16 @@ export function App({ api, baseUrl, pollIntervalMs = 1000 }: Props): React.React
     return () => clearInterval(t);
   }, []);
 
+  const jobsMax = Math.max(0, Math.min(state.recentJobs.length, 25) - 1);
+  const safeJobsCursor = Math.min(jobsCursor, jobsMax);
+
   const screenView =
     screen === 'dashboard' ? (
       <Dashboard state={state} />
     ) : screen === 'agents' ? (
       <Agents state={state} selectedIndex={agentsCursor} />
     ) : screen === 'jobs' ? (
-      <Jobs state={state} selectedIndex={jobsCursor} />
+      <Jobs state={state} selectedIndex={safeJobsCursor} />
     ) : screen === 'logs' ? (
       <Logs state={state} rows={LOGS_VISIBLE_ROWS} />
     ) : (
@@ -172,7 +175,7 @@ export function App({ api, baseUrl, pollIntervalMs = 1000 }: Props): React.React
           setScreen={setScreen}
           agentsCursor={agentsCursor}
           setAgentsCursor={setAgentsCursor}
-          jobsCursor={jobsCursor}
+          jobsCursor={safeJobsCursor}
           setJobsCursor={setJobsCursor}
           haltConfirm={haltConfirm}
           setHaltConfirm={setHaltConfirm}
@@ -271,8 +274,8 @@ function InputHandler({
     }
     if (screen === 'jobs' && state.recentJobs.length > 0) {
       const max = Math.min(state.recentJobs.length, 25) - 1;
-      if (key.upArrow) setJobsCursor((c) => Math.max(0, Math.min(max, c - 1)));
-      if (key.downArrow) setJobsCursor((c) => Math.max(0, Math.min(max, c + 1)));
+      if (key.upArrow) setJobsCursor(Math.max(0, Math.min(max, jobsCursor - 1)));
+      if (key.downArrow) setJobsCursor(Math.max(0, Math.min(max, jobsCursor + 1)));
     }
     if (screen === 'logs') {
       if (input === '1') dispatch({ type: 'log_set_min_level', level: 10 });
