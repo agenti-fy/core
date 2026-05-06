@@ -42,6 +42,9 @@ Nothing here makes network calls or starts processes. Every export is a pure val
 | `PersonaType` | `BuiltinPersona \| "custom"` |
 | `PERSONA_DEFAULTS` | Per-persona emoji, title, signature, and git identity defaults |
 | `isBuiltinPersona(value)` | Type guard: narrows `string` to `BuiltinPersona` |
+| `PERSONA_NAME_RE` | Regex `^[a-z][a-z0-9_-]{0,31}$` — the canonical persona-name allowlist |
+| `isValidPersonaName(s)` | Boolean wrapper around `PERSONA_NAME_RE` |
+| `PersonaNameSchema` | Zod schema for RPC validators and label parsers |
 
 ### Status enums (`status.ts`)
 
