@@ -49,6 +49,11 @@ const ConfigSchema = z.object({
    * otherwise → reviewer labels).
    */
   prMonitorIntervalSeconds: z.coerce.number().int().positive().default(30),
+  /**
+   * Maximum number of re-review cycles per PR after the initial review.
+   * When the cap is reached the PR gets `needs-human` and automated routing stops.
+   */
+  prMaxReviewCycles: z.coerce.number().int().positive().default(5),
   /** Required reviewers per PR — every one must approve on current HEAD before merge gate fires. */
   prMonitorRequiredReviewers: z
     .preprocess(
@@ -110,6 +115,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     planCompletionPollSeconds: env.PLAN_COMPLETION_POLL_S,
     prMonitorIntervalSeconds: env.PR_MONITOR_INTERVAL_S,
     prMonitorRequiredReviewers: env.PR_MONITOR_REQUIRED_REVIEWERS,
+    prMaxReviewCycles: env.PR_MAX_REVIEW_CYCLES,
     disableGithub: env.DISABLE_GITHUB,
   });
 }

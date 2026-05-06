@@ -40,6 +40,8 @@ import type { GitHubClient } from '../github/client.js';
 
 export interface PrMonitorConfig {
   requiredReviewers: readonly string[];
+  /** Max number of re-review cycles after the initial review. Default: 5. */
+  maxReviewCycles: number;
 }
 
 export interface ReviewSnapshot {
@@ -64,6 +66,34 @@ export interface MonitorOutcome {
   scannedPrs: number;
   /** PRs whose label set was changed this tick. */
   routed: number;
+}
+
+/**
+ * Whether the PR monitor should dispatch a new review label for a given persona.
+ *
+ * Returns false (skip) when the current HEAD SHA matches the last SHA we
+ * dispatched for AND there is no stale CHANGES_REQUESTED from that persona on
+ * an older commit (which would mean the author addressed previous feedback and
+ * the reviewer should re-examine even though no new code was pushed since the
+ * last dispatch).
+ *
+ * Exported for testing.
+ */
+export function shouldDispatchReviewLabel(
+  persona: string,
+  snapshot: PrSnapshot,
+  lastLabeledSha: string | null,
+): boolean {
+  if (lastLabeledSha === null) return true;
+  if (snapshot.headSha !== lastLabeledSha) return true;
+  // Same HEAD SHA: skip unless the persona has a stale CHANGES_REQUESTED
+  // (review on an older commit that the author has since pushed past).
+  return snapshot.reviews.some(
+    (r) =>
+      r.authorPersona === persona &&
+      r.state === 'CHANGES_REQUESTED' &&
+      r.commitId !== snapshot.headSha,
+  );
 }
 
 /**
@@ -259,11 +289,25 @@ export async function monitorPullRequests(
             continue;
           }
 
-          // Build the next label set: non-routing + in-progress markers + desired routing.
+          // SHA filter: suppress reviewer labels whose HEAD SHA is unchanged
+          // since the last dispatch (prevents spurious duplicate review jobs
+          // when only labels/metadata changed on the PR).
+          const filtered = desired.filter((label) => {
+            const parsed = parseRoutingLabel(label);
+            if (!parsed || parsed.method !== 'review' || parsed.inProgress) return true;
+            const lastSha = store.getLastLabeledSha(
+              repoRow.repo,
+              snapshot.number,
+              parsed.persona,
+            );
+            return shouldDispatchReviewLabel(parsed.persona, snapshot, lastSha);
+          });
+
+          // Build the next label set: non-routing + in-progress markers + filtered routing.
           const next = new Set<string>([
             ...nonRoutingLabels(labels),
             ...inProgressMarkers(labels),
-            ...desired,
+            ...filtered,
           ]);
           // Diff: only call setLabels if the routing portion actually changed.
           const currentRouting = new Set(
@@ -272,10 +316,10 @@ export async function monitorPullRequests(
               return p !== null && !p.inProgress;
             }),
           );
-          const desiredSet = new Set(desired);
+          const filteredSet = new Set(filtered);
           if (
-            currentRouting.size === desiredSet.size &&
-            [...currentRouting].every((l) => desiredSet.has(l))
+            currentRouting.size === filteredSet.size &&
+            [...currentRouting].every((l) => filteredSet.has(l))
           ) {
             logger.debug(
               {
@@ -291,6 +335,67 @@ export async function monitorPullRequests(
             continue;
           }
 
+          // Identify reviewer labels that are genuinely new (not already present).
+          const newReviewLabels = filtered.filter((l) => {
+            const p = parseRoutingLabel(l);
+            return p?.method === 'review' && !p.inProgress && !currentRouting.has(l);
+          });
+
+          // Cycle cap: if this is a re-dispatch (not the first time we're
+          // sending review labels for this PR), check whether we've hit the
+          // configured limit and switch to needs-human if so.
+          if (newReviewLabels.length > 0) {
+            const isFirstReview = !store.hasAnyLabeledSha(repoRow.repo, snapshot.number);
+            if (!isFirstReview) {
+              const count = store.getReviewCycleCount(repoRow.repo, snapshot.number);
+              if (count >= config.maxReviewCycles) {
+                logger.warn(
+                  {
+                    repo: repoRow.repo,
+                    pr: pr.number,
+                    cycleCount: count,
+                    maxReviewCycles: config.maxReviewCycles,
+                  },
+                  'pr-monitor: review cycle cap reached — applying needs-human',
+                );
+                const capNext = [
+                  ...nonRoutingLabels(labels),
+                  ...inProgressMarkers(labels),
+                  NEEDS_HUMAN_LABEL,
+                ];
+                try {
+                  await github.issues.setLabels({
+                    owner: ref.owner,
+                    repo: ref.repo,
+                    issue_number: pr.number,
+                    labels: capNext,
+                  });
+                  await github.issues.createComment({
+                    owner: ref.owner,
+                    repo: ref.repo,
+                    issue_number: pr.number,
+                    body:
+                      `⚠️ **Automated review-cycle cap reached** (${config.maxReviewCycles} re-review cycles).\n\n` +
+                      `This PR has gone through the maximum number of automated review → address-review iterations. ` +
+                      `A human must take over to resolve the outstanding review feedback.\n\n` +
+                      `*Set by the PR monitor (PR_MAX_REVIEW_CYCLES=${config.maxReviewCycles}).*`,
+                  });
+                  routed++;
+                } catch (err) {
+                  logger.warn(
+                    {
+                      repo: repoRow.repo,
+                      pr: pr.number,
+                      err: err instanceof Error ? err.message : String(err),
+                    },
+                    'pr-monitor: cap setLabels/createComment failed',
+                  );
+                }
+                continue;
+              }
+            }
+          }
+
           try {
             await github.issues.setLabels({
               owner: ref.owner,
@@ -299,12 +404,30 @@ export async function monitorPullRequests(
               labels: [...next],
             });
             routed++;
+
+            // After successful dispatch: record SHA + increment cycle counter.
+            if (newReviewLabels.length > 0) {
+              const isFirstReview = !store.hasAnyLabeledSha(repoRow.repo, snapshot.number);
+              for (const label of newReviewLabels) {
+                const parsed = parseRoutingLabel(label)!;
+                store.recordLabeledSha(
+                  repoRow.repo,
+                  snapshot.number,
+                  parsed.persona,
+                  snapshot.headSha,
+                );
+              }
+              if (!isFirstReview) {
+                store.incrementReviewCycleCount(repoRow.repo, snapshot.number);
+              }
+            }
+
             logger.info(
               {
                 repo: repoRow.repo,
                 pr: pr.number,
-                added: [...desiredSet].filter((l) => !currentRouting.has(l)),
-                removed: [...currentRouting].filter((l) => !desiredSet.has(l)),
+                added: [...filteredSet].filter((l) => !currentRouting.has(l)),
+                removed: [...currentRouting].filter((l) => !filteredSet.has(l)),
               },
               'pr-monitor: routed',
             );
