@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - CHANGELOG: align v0.1.0 "Combined-label routing" entry with the `agent:<persona>:<method>` format that actually shipped (was previously described as the older `agent:<persona>` + `task:<method>` split — follow-up to #76, surfaced by #80).
+- Treat empty-string `CLAUDE_TIMEOUT_MS` as unset rather than coercing to `0` (which previously silently disabled wall-clock timeouts). Affects compose `${VAR-}` expansions where the variable is not set in the environment. (#129, closes #127.)
 
 ## [0.1.0] - 2026-05-05
 
