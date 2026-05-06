@@ -1,4 +1,4 @@
-import { isBuiltinPersona, type PersonaType } from './personas.js';
+import { isBuiltinPersona, isValidPersonaName, type PersonaType } from './personas.js';
 import { METHOD_PATHS, pathToMethod, type Method } from './methods.js';
 
 /**
@@ -53,6 +53,7 @@ export function parseRoutingLabel(label: string): ParsedRoutingLabel | null {
   const colon = rest.indexOf(':');
   if (colon <= 0 || colon === rest.length - 1) return null;
   const persona = rest.slice(0, colon);
+  if (!isValidPersonaName(persona)) return null;
   let methodPart = rest.slice(colon + 1);
   let inProgress = false;
   if (methodPart.endsWith(IN_PROGRESS_SUFFIX)) {
