@@ -331,7 +331,7 @@ For each `agent:<persona>:<method>` routing label the coordinator finds during a
 1. Extract `<persona>` and `<method>` from the combined label.
 2. Find an IDLE registered agent whose `type` matches `<persona>`. If none is IDLE, skip (try next poll).
 3. If multiple IDLE agents share the persona, pick least-recently-dispatched (round-robin).
-4. Insert a `jobs` row with status `dispatched`; the partial unique index on (repo, method, target_id) blocks duplicate dispatch.
+4. Insert a `jobs` row with status `dispatched`; the partial unique index on (repo, persona_name, method, target_id) blocks duplicate dispatch.
 5. POST to the agent's `/<method>` endpoint. On 202 → mark `running`. On 409/503 → mark `failed_to_dispatch` and try a different IDLE agent of the same persona.
 
 If a referenced persona has **no registered agent at all**, the coordinator applies `needs-human` with a comment explaining the missing persona.
@@ -512,7 +512,7 @@ A small in-memory job registry (`Map<job_id, JobRecord>`) backs `GET /jobs/:id`.
 ## 12. Concurrency & idempotency
 
 - **Per-agent**: only one BUSY job at a time. Subsequent dispatches → 409.
-- **Per-repo at coordinator**: the coordinator's `jobs` table holds a partial unique index on `(repo, method, target_id)` for active rows, preventing duplicate dispatch even if multiple agents could pick it up.
+- **Per-repo at coordinator**: the coordinator's `jobs` table holds a partial unique index on `(repo, persona_name, method, target_id)` for active rows, preventing duplicate dispatch even if multiple agents could pick it up.
 - **Label-transition discipline**: agent flips `agent:<persona>:<method>` → `agent:<persona>:<method>-in-progress` on accept; coordinator skips items carrying a matching `*-in-progress` label while polling. Surviving coordinator restart, this is the visible source of truth — re-dispatch is safe because the in-progress item won't be re-picked until the label is cleared (which the agent does on completion or a stale-marker sweeper does after a configurable timeout).
 
 ## 13. Failure handling
