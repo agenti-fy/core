@@ -11,7 +11,7 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -b --noEmit",
+    "typecheck": "tsc -b",
     "doctor": "node dist/doctor.js",
     "test:e2e": "node dist/run.js"
   },

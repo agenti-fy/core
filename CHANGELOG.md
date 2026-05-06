@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `pnpm typecheck` succeeds on a clean checkout without a prior `pnpm build` (#192): switched from `tsc -p tsconfig.json --noEmit` (per-package) / `pnpm -r typecheck` (root) to `tsc -b` (project-references build mode), which resolves the reference graph in dependency order. `--noEmit` was dropped because TypeScript propagates it to referenced `composite` projects, triggering TS6310.
 - **TUI**: jobs cursor `›` indicator no longer disappears when `recentJobs` shrinks under the cursor (#160).
 - **TUI**: agents cursor `›` indicator no longer disappears when the agents list shrinks under the cursor between polls; `R` reset now targets the visually highlighted row rather than silently no-op'ing on a stale index (#174, closes #173).
 - CHANGELOG: align v0.1.0 "Combined-label routing" entry with the `agent:<persona>:<method>` format that actually shipped (was previously described as the older `agent:<persona>` + `task:<method>` split — follow-up to #76, surfaced by #80).

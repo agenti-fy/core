@@ -13,7 +13,7 @@
     "copy-assets": "mkdir -p dist/skills/defaults dist/personas && cp -f src/skills/defaults/*.md dist/skills/defaults/ && cp -f src/personas/*.md dist/personas/",
     "dev": "tsc -p tsconfig.json --watch & node --watch dist/index.js",
     "start": "node dist/index.js",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b"
   },
   "dependencies": {
     "@agentify/shared": "workspace:*",
