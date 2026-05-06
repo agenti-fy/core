@@ -401,3 +401,61 @@ describe('agents.type CHECK constraint (migration 2)', () => {
     store.close();
   });
 });
+
+describe('CoordinatorStore plans (migration 8)', () => {
+  it('upsertPlan inserts a plan and listOpenPlans returns it', () => {
+    const store = freshStore();
+    store.upsertPlan('acme/api', 10, [11, 12, 13]);
+    const open = store.listOpenPlans();
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({ repo: 'acme/api', parent_id: 10, child_ids: [11, 12, 13] });
+    store.close();
+  });
+
+  it('re-upsert overwrites child_ids and resets completed_at to NULL', () => {
+    const store = freshStore();
+    store.upsertPlan('acme/api', 10, [11, 12]);
+    store.markPlanComplete('acme/api', 10);
+    // Verify it's gone from open list before re-plan
+    expect(store.listOpenPlans()).toHaveLength(0);
+
+    store.upsertPlan('acme/api', 10, [11, 12, 13]);
+    const open = store.listOpenPlans();
+    expect(open).toHaveLength(1);
+    expect(open[0]?.child_ids).toEqual([11, 12, 13]);
+    store.close();
+  });
+
+  it('markPlanComplete excludes the row from listOpenPlans', () => {
+    const store = freshStore();
+    store.upsertPlan('acme/api', 10, [11]);
+    store.upsertPlan('acme/api', 20, [21, 22]);
+    store.markPlanComplete('acme/api', 10);
+    const open = store.listOpenPlans();
+    expect(open).toHaveLength(1);
+    expect(open[0]?.parent_id).toBe(20);
+    store.close();
+  });
+
+  it('markPlanComplete is idempotent', () => {
+    const store = freshStore();
+    store.upsertPlan('acme/api', 10, [11]);
+    store.markPlanComplete('acme/api', 10);
+    expect(() => store.markPlanComplete('acme/api', 10)).not.toThrow();
+    expect(store.listOpenPlans()).toHaveLength(0);
+    store.close();
+  });
+
+  it('recordPlanCheck updates last_checked_at', () => {
+    const store = freshStore();
+    const t1 = Date.now();
+    store.upsertPlan('acme/api', 10, [11]);
+    const before = store.listOpenPlans()[0];
+    expect(before?.last_checked_at).toBeNull();
+
+    store.recordPlanCheck('acme/api', 10, t1);
+    const after = store.listOpenPlans()[0];
+    expect(after?.last_checked_at).toBe(t1);
+    store.close();
+  });
+});
