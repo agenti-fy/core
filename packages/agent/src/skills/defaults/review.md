@@ -25,7 +25,10 @@ Post a single verdict — `APPROVE`, `REQUEST_CHANGES`, or `COMMENT` — from yo
 3. Evaluate from your persona's specialty. Does the change address the linked issue? Correct, minimal, tested?
 4. Submit:
     ```bash
-    gh pr review {{target_id}} -R {{repo}} --approve|--request-changes|--comment --body "{{signature}} — <feedback>"
+    # one of:
+    gh pr review {{target_id}} -R {{repo}} --approve --body "{{signature}} — <feedback>"
+    gh pr review {{target_id}} -R {{repo}} --request-changes --body "{{signature}} — <feedback>"
+    gh pr review {{target_id}} -R {{repo}} --comment --body "{{signature}} — <feedback>"
     ```
 5. Remove your routing label:
     ```bash

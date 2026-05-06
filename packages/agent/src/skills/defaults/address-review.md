@@ -6,6 +6,7 @@ You have been called on PR **#{{target_id}}** in **{{repo}}**.
 
 ## Goal
 Address all `REQUEST_CHANGES` reviews on this PR via commits. Do NOT merge.
+
 ## Procedure
 1. **Check out the PR branch before touching anything.** Your worktree starts on `main`.
     ```bash
@@ -26,9 +27,11 @@ Address all `REQUEST_CHANGES` reviews on this PR via commits. Do NOT merge.
     ```bash
     gh pr edit {{target_id}} -R {{repo}} --remove-label "agent:{{persona}}:address-review"
     ```
+
 ## Hard rules
 - Append commits; never squash.
 - Unresolvable conflict → public reply + `needs-human`.
 - Change only what the review feedback covers.
+
 ## Output
 `{ "commits_pushed": <n>, "reviews_dismissed": [<id>...], "rerequested": <bool> }`.
