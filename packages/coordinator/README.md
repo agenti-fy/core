@@ -130,6 +130,7 @@ All intervals are env vars resolved in `src/config.ts` (lines 19–45).
 | `INSTALLATION_REFRESH_S` | `300` s | `src/config.ts:20` | Refresh `repos` table from GitHub App installation |
 | `STALE_JOB_SWEEP_S` | `600` s | `src/config.ts:38` | Sweep stuck in-progress labels; restore routing |
 | `PR_MONITOR_INTERVAL_S` | `30` s | `src/config.ts:45` | Walk open PRs; apply reviewer/action routing labels |
+| `PLAN_COMPLETION_POLL_S` | `60` s | `src/config.ts:44` | Walk open plans; update parent checklists; close completed parents |
 
 `DEFAULT_POLL_INTERVAL_S` (default `30`) sets `repos.poll_interval_s` when a repo is first discovered. Individual repos can be tuned via `PATCH /repos/:owner/:name`.
 
