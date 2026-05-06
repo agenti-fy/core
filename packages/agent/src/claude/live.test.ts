@@ -5,23 +5,33 @@ import { __test, LiveClaudeAdapter } from './live.js';
 import { loadConfig, resolveMaxTurns, applyHotReloadable } from '../config.js';
 import type { Method } from '@agentify/shared';
 
-// Hardcoded boundary value so tests don't import from the mocked SDK module.
-const BOUNDARY = '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__';
-
 // ---- vi.mock must be top-level so vitest hoists it ----
-// Export SYSTEM_PROMPT_DYNAMIC_BOUNDARY so live.ts (which imports it) gets
-// the correct string value even when running under the test mock.
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: vi.fn(),
-  SYSTEM_PROMPT_DYNAMIC_BOUNDARY: '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__',
-}));
+// Use vi.importActual inside the factory so SYSTEM_PROMPT_DYNAMIC_BOUNDARY
+// tracks the real SDK export — a rename or re-spell will surface here first.
+vi.mock('@anthropic-ai/claude-agent-sdk', async () => {
+  const actual = await vi.importActual<typeof import('@anthropic-ai/claude-agent-sdk')>(
+    '@anthropic-ai/claude-agent-sdk',
+  );
+  return {
+    query: vi.fn(),
+    SYSTEM_PROMPT_DYNAMIC_BOUNDARY: actual.SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
+  };
+});
 
-// Import the mocked binding AFTER vi.mock so we get the mock reference.
+// Import the mocked bindings AFTER vi.mock so we get the mock reference.
 // ESM live-binding: `query` in live.ts will see this same mock.
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from '@anthropic-ai/claude-agent-sdk';
 
 const { extractArtifacts } = __test;
 const silentLog = pino({ level: 'silent' });
+
+// ---------------------------------------------------------------------------
+// Guard: SYSTEM_PROMPT_DYNAMIC_BOUNDARY tracks the SDK export, not a literal
+// ---------------------------------------------------------------------------
+
+it('SYSTEM_PROMPT_DYNAMIC_BOUNDARY matches the known string so an SDK rename fails loudly', () => {
+  expect(SYSTEM_PROMPT_DYNAMIC_BOUNDARY).toBe('__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__');
+});
 
 // ---------------------------------------------------------------------------
 // extractArtifacts unit tests (unchanged)
@@ -209,7 +219,7 @@ describe('LiveClaudeAdapter.buildSdkOptions — prompt caching', () => {
 
     const sp = opts['systemPrompt'] as string[];
     expect(Array.isArray(sp)).toBe(true);
-    const boundaryIdx = sp.indexOf(BOUNDARY);
+    const boundaryIdx = sp.indexOf(SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
     expect(boundaryIdx, 'boundary must be present').toBeGreaterThan(-1);
     expect(sp[0]).toContain('You are the implementer.');
     expect(sp[0]).toContain('do stuff');
@@ -235,7 +245,7 @@ describe('LiveClaudeAdapter.buildSdkOptions — prompt caching', () => {
     );
 
     const sp = opts['systemPrompt'] as string[];
-    const boundaryIdx = sp.indexOf(BOUNDARY);
+    const boundaryIdx = sp.indexOf(SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
     // Everything before the boundary should contain the stable content.
     const beforeBoundary = sp.slice(0, boundaryIdx).join('\n');
     expect(beforeBoundary).toContain(stable);
@@ -262,7 +272,7 @@ describe('LiveClaudeAdapter.buildSdkOptions — prompt caching', () => {
 
     const sp = opts['systemPrompt'] as string[];
     expect(Array.isArray(sp)).toBe(true);
-    expect(sp).not.toContain(BOUNDARY);
+    expect(sp).not.toContain(SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
   });
 
   it('stable section is byte-identical for different (repo, target_id) — cache key is stable', () => {
@@ -287,8 +297,8 @@ describe('LiveClaudeAdapter.buildSdkOptions — prompt caching', () => {
 
     const spA = optsA['systemPrompt'] as string[];
     const spB = optsB['systemPrompt'] as string[];
-    const boundaryIdxA = spA.indexOf(BOUNDARY);
-    const boundaryIdxB = spB.indexOf(BOUNDARY);
+    const boundaryIdxA = spA.indexOf(SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
+    const boundaryIdxB = spB.indexOf(SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
 
     // The stable section (before the boundary) must be identical regardless of job vars.
     expect(spA.slice(0, boundaryIdxA)).toEqual(spB.slice(0, boundaryIdxB));
@@ -361,9 +371,12 @@ describe('resolveMaxTurns', () => {
 // LiveClaudeAdapter — maxTurns wired to SDK options at run time
 // ---------------------------------------------------------------------------
 
-vi.mock('@anthropic-ai/claude-agent-sdk', () => {
+vi.mock('@anthropic-ai/claude-agent-sdk', async () => {
+  const actual = await vi.importActual<typeof import('@anthropic-ai/claude-agent-sdk')>(
+    '@anthropic-ai/claude-agent-sdk',
+  );
   const querySpy = vi.fn();
-  return { query: querySpy, SYSTEM_PROMPT_DYNAMIC_BOUNDARY: '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__' };
+  return { query: querySpy, SYSTEM_PROMPT_DYNAMIC_BOUNDARY: actual.SYSTEM_PROMPT_DYNAMIC_BOUNDARY };
 });
 
 describe('LiveClaudeAdapter maxTurns per method', () => {
