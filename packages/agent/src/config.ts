@@ -110,6 +110,24 @@ export function resolveMaxTurns(config: Config, method: Method): number {
   }
 }
 
+/**
+ * Copy hot-reloadable fields from `fresh` onto `config` in-place so that
+ * closures already capturing `config` (e.g. `resolveMaxTurns` inside the
+ * LiveClaudeAdapter) see new values on the next call without a restart.
+ *
+ * Hot-reloadable: per-method turn budgets only (claudeMaxTurns*).
+ * Not hot-reloadable (restart required): host, port, coordinatorUrl,
+ * agentPublicUrl, heartbeatIntervalMs, credentials.
+ */
+export function applyHotReloadable(config: Config, fresh: Config): void {
+  config.claudeMaxTurns = fresh.claudeMaxTurns;
+  config.claudeMaxTurnsPlan = fresh.claudeMaxTurnsPlan;
+  config.claudeMaxTurnsImplement = fresh.claudeMaxTurnsImplement;
+  config.claudeMaxTurnsReview = fresh.claudeMaxTurnsReview;
+  config.claudeMaxTurnsAddressReview = fresh.claudeMaxTurnsAddressReview;
+  config.claudeMaxTurnsMerge = fresh.claudeMaxTurnsMerge;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return ConfigSchema.parse({
     port: env.AGENT_PORT ?? env.PORT,

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import pino from 'pino';
 import { __test, LiveClaudeAdapter } from './live.js';
-import { loadConfig, resolveMaxTurns } from '../config.js';
+import { loadConfig, resolveMaxTurns, applyHotReloadable } from '../config.js';
 import type { Method } from '@agentify/shared';
 
 const { extractArtifacts } = __test;
@@ -194,7 +194,7 @@ describe('LiveClaudeAdapter maxTurns per method', () => {
     await adapter.run(baseOpts);
 
     expect(querySpy).toHaveBeenCalledOnce();
-    const callArg = querySpy.mock.calls[0][0] as { options: Record<string, unknown> };
+    const callArg = querySpy.mock.calls[0]![0]! as { options: Record<string, unknown> };
     expect(callArg.options.maxTurns).toBe(50);
   });
 
@@ -208,7 +208,7 @@ describe('LiveClaudeAdapter maxTurns per method', () => {
 
     await adapter.run(baseOpts);
 
-    const callArg = querySpy.mock.calls[0][0] as { options: Record<string, unknown> };
+    const callArg = querySpy.mock.calls[0]![0]! as { options: Record<string, unknown> };
     expect(callArg.options.maxTurns).toBe(20);
   });
 
@@ -229,8 +229,110 @@ describe('LiveClaudeAdapter maxTurns per method', () => {
         [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }),
       });
       await adapter.run({ ...baseOpts, method: methods[i]! });
-      const callArg = querySpy.mock.calls[0][0] as { options: Record<string, unknown> };
+      const callArg = querySpy.mock.calls[0]![0]! as { options: Record<string, unknown> };
       expect(callArg.options.maxTurns).toBe(expected[i]);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyHotReloadable — in-place field mutation
+// ---------------------------------------------------------------------------
+
+describe('applyHotReloadable', () => {
+  it('propagates all claudeMaxTurns* fields from fresh to config', () => {
+    const cfg = loadConfig(baseEnv());
+    const fresh = loadConfig({
+      ...baseEnv(),
+      CLAUDE_MAX_TURNS: '99',
+      CLAUDE_MAX_TURNS_PLAN: '77',
+      CLAUDE_MAX_TURNS_IMPLEMENT: '300',
+      CLAUDE_MAX_TURNS_REVIEW: '40',
+      CLAUDE_MAX_TURNS_ADDRESS_REVIEW: '150',
+      CLAUDE_MAX_TURNS_MERGE: '25',
+    });
+    applyHotReloadable(cfg, fresh);
+    expect(cfg.claudeMaxTurns).toBe(99);
+    expect(cfg.claudeMaxTurnsPlan).toBe(77);
+    expect(cfg.claudeMaxTurnsImplement).toBe(300);
+    expect(cfg.claudeMaxTurnsReview).toBe(40);
+    expect(cfg.claudeMaxTurnsAddressReview).toBe(150);
+    expect(cfg.claudeMaxTurnsMerge).toBe(25);
+  });
+
+  it('does NOT mutate static-at-boot fields (host, port, coordinatorUrl)', () => {
+    const cfg = loadConfig(baseEnv());
+    const originalHost = cfg.host;
+    const originalPort = cfg.port;
+    const originalCoordinatorUrl = cfg.coordinatorUrl;
+    // fresh has different values for those fields, but applyHotReloadable must ignore them.
+    const fresh = loadConfig({
+      ...baseEnv(),
+      COORDINATOR_URL: 'http://other-coordinator:9999',
+      CLAUDE_MAX_TURNS_MERGE: '10',
+    });
+    applyHotReloadable(cfg, fresh);
+    expect(cfg.host).toBe(originalHost);
+    expect(cfg.port).toBe(originalPort);
+    expect(cfg.coordinatorUrl).toBe(originalCoordinatorUrl);
+    // Only the turn budget was updated.
+    expect(cfg.claudeMaxTurnsMerge).toBe(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LiveClaudeAdapter hot-reload — config mutation after construction
+// ---------------------------------------------------------------------------
+
+describe('LiveClaudeAdapter hot-reload', () => {
+  let querySpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const sdk = await import('@anthropic-ai/claude-agent-sdk');
+    querySpy = sdk.query as ReturnType<typeof vi.fn>;
+    querySpy.mockReset();
+    querySpy.mockReturnValue({
+      [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }),
+    });
+  });
+
+  const baseOpts = {
+    method: 'merge' as Method,
+    repo: 'acme/api',
+    target_id: 7,
+    personaBody: '',
+    skillPrompt: 'merge it',
+    systemPrompt: 'merge it',
+    model: undefined,
+    sessionId: null,
+    cwd: '/tmp/wt',
+  };
+
+  it('picks up a mutated config.claudeMaxTurnsMerge on the next run()', async () => {
+    const cfg = loadConfig(baseEnv());
+    const adapter = new LiveClaudeAdapter({
+      logger: silentLog,
+      maxTurnsForMethod: (m) => resolveMaxTurns(cfg, m),
+      timeoutMs: 0,
+    });
+
+    // First run uses the original default (50).
+    await adapter.run(baseOpts);
+    expect(
+      (querySpy.mock.calls[0]![0] as { options: Record<string, unknown> }).options.maxTurns,
+    ).toBe(50);
+
+    // Simulate applyHotReloadable() mutating the config.
+    cfg.claudeMaxTurnsMerge = 15;
+    querySpy.mockReset();
+    querySpy.mockReturnValue({
+      [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }),
+    });
+
+    // Second run should use the new value without rebuilding the adapter.
+    await adapter.run(baseOpts);
+    expect(
+      (querySpy.mock.calls[0]![0] as { options: Record<string, unknown> }).options.maxTurns,
+    ).toBe(15);
   });
 });

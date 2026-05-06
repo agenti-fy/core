@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { Logger } from 'pino';
 import { METHODS, reportConfigError, type ParsedSoul } from '@agentify/shared';
-import { loadConfig, resolveMaxTurns, type Config } from './config.js';
+import { loadConfig, resolveMaxTurns, applyHotReloadable, type Config } from './config.js';
 import { createLogger } from './logger.js';
 import { loadSoulFromFile } from './soul/parser.js';
 import { SoulRef } from './soul/ref.js';
@@ -130,6 +130,9 @@ async function main(): Promise<void> {
 
   const reinit = async (): Promise<boolean> => {
     try {
+      // Reload hot-reloadable config fields first so the next skill run picks
+      // up new CLAUDE_MAX_TURNS_* values without a process restart.
+      applyHotReloadable(config, loadConfig());
       const fresh = loadSoulFromFile(config.soulPath);
       soulRef.set(fresh);
       // Update the metrics persona label so post-reset scrapes carry the
