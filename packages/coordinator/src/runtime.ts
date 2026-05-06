@@ -120,7 +120,7 @@ export function startRuntime(deps: RuntimeDeps): RuntimeHandles {
     stops.push(
       scheduleLoop(
         async () => {
-          const result = await pollDueRepos(deps.github!, deps.store, deps.logger);
+          const result = await pollDueRepos(deps.github!, deps.store, deps.logger, deps.metrics);
 
           // Halt detection: observed halt-agents label → halt. We do NOT
           // auto-clear on label removal — the work poller's `since=` filter can

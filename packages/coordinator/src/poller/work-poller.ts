@@ -4,11 +4,13 @@ import {
   normalizeIssueLabels,
   parseDependencies,
   parseRepo,
+  parseRoutingLabel,
   type Method,
   type PersonaType,
 } from '@agentify/shared';
 import type { CoordinatorStore } from '../store.js';
 import type { GitHubClient } from '../github/client.js';
+import type { CoordinatorMetrics } from '../metrics.js';
 import { hasHaltLabel, parseRoutingLabels } from './labels.js';
 import { detectHijackAttempt } from '../security/hijack-detector.js';
 
@@ -146,6 +148,7 @@ export async function pollDueRepos(
   github: GitHubClient,
   store: CoordinatorStore,
   logger: Logger,
+  metrics?: CoordinatorMetrics,
 ): Promise<PollOutcome> {
   const repos = store.listReposDueForPoll();
   const items: PendingWorkItem[] = [];
@@ -183,7 +186,7 @@ export async function pollDueRepos(
     }
 
     try {
-      const result = await pollRepo(github, store, repoRow.repo, effectiveLastPolled, logger);
+      const result = await pollRepo(github, store, repoRow.repo, effectiveLastPolled, logger, metrics);
       items.push(...result.items);
       if (result.haltSeen) haltSeen = true;
       skippedByDeps += result.skippedByDeps;
@@ -262,6 +265,7 @@ async function pollRepo(
   repo: string,
   lastPolledAt: number | null,
   logger: Logger,
+  metrics?: CoordinatorMetrics,
 ): Promise<{ items: PendingWorkItem[]; haltSeen: boolean; skippedByDeps: number }> {
   const ref = parseRepo(repo);
   const owner = ref.owner;
@@ -316,12 +320,25 @@ async function pollRepo(
       const labels = normalizeIssueLabels(issue.labels);
       if (hasHaltLabel(labels)) haltSeen = true;
 
+      if (metrics) {
+        for (const label of labels) {
+          if (label.startsWith('agent:') && parseRoutingLabel(label) === null) {
+            metrics.recordInvalidRoutingLabel(repo);
+          }
+        }
+      }
+
       const result = await evaluateIssue(issue, repo, fetchDepState, logger);
       if (result.kind === 'flagged') {
         const bodyHash = hashBody(issue.body ?? '');
         if (!store.isHijackFlagged(repo, issue.number, bodyHash)) {
           await applyHijackFlag(github, owner, name, issue.number, result.matched, logger);
           store.markHijackFlagged(repo, issue.number, bodyHash);
+          if (metrics) {
+            for (const pattern of result.matched) {
+              metrics.recordHijackAttempt(repo, pattern);
+            }
+          }
         }
         store.clearDepBlocked(repo, issue.number);
       } else if (result.kind === 'blocked') {
@@ -379,12 +396,26 @@ async function pollRepo(
       continue;
     }
 
+    if (metrics) {
+      const depLabels = normalizeIssueLabels(issue.labels);
+      for (const label of depLabels) {
+        if (label.startsWith('agent:') && parseRoutingLabel(label) === null) {
+          metrics.recordInvalidRoutingLabel(repo);
+        }
+      }
+    }
+
     const result = await evaluateIssue(issue, repo, fetchDepState, logger);
     if (result.kind === 'flagged') {
       const bodyHash = hashBody(issue.body ?? '');
       if (!store.isHijackFlagged(repo, targetId, bodyHash)) {
         await applyHijackFlag(github, owner, name, targetId, result.matched, logger);
         store.markHijackFlagged(repo, targetId, bodyHash);
+        if (metrics) {
+          for (const pattern of result.matched) {
+            metrics.recordHijackAttempt(repo, pattern);
+          }
+        }
       }
       store.clearDepBlocked(repo, targetId);
     } else if (result.kind === 'blocked') {
