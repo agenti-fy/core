@@ -1,6 +1,11 @@
 import type { Logger } from 'pino';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { JobOutcome, Method } from '@agentify/shared';
+import {
+  JobArtifactsSchema,
+  type JobArtifacts,
+  type JobOutcome,
+  type Method,
+} from '@agentify/shared';
 import type {
   ClaudeAdapter,
   SkillRunOptions,
@@ -222,12 +227,14 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
       };
     }
 
+    const artifacts = extractArtifacts(opts.method, finalText, log);
     log.info(
       {
         messageCount,
         assistantMessageCount,
         toolUseCount,
         finalChars: finalText.length,
+        artifactKeys: Object.keys(artifacts),
         costUsd,
         usage,
         duration_s: Math.floor((Date.now() - startedAt) / 1000),
@@ -237,13 +244,109 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
     return {
       outcome: 'success',
       sessionId,
-      artifacts: {},
+      artifacts,
       finalText,
       ...(usage ? { usage } : {}),
       ...(costUsd !== undefined ? { costUsd } : {}),
     };
   }
 }
+
+/**
+ * Parse the model's final assistant text into a `JobArtifacts` for the given
+ * method. Every skill prompt instructs the model to return a JSON object
+ * matching its slot in `JobArtifactsSchema` (e.g. plan → `{ "child_issues":
+ * [...] }`). If we don't extract that, downstream consumers — most notably
+ * the plan-completion-poller, which only sees plans that the job-poller
+ * upserts when `artifacts.plan.child_issues` is non-empty — silently no-op.
+ *
+ * Robust to the model wrapping the JSON in fenced code blocks or in a longer
+ * trailing summary. Strategy:
+ *  1. Try to parse the entire trimmed text as JSON.
+ *  2. Else scan for fenced ```json (or unlabelled) blocks, last-wins.
+ *  3. Else scan for a balanced trailing `{ ... }` substring, last-wins.
+ *  4. Validate the candidate against the per-method schema slot. If anything
+ *     fails, return `{}` and log — never throw, never fail the job.
+ */
+function extractArtifacts(method: Method, finalText: string, log: Logger): JobArtifacts {
+  const trimmed = finalText.trim();
+  if (!trimmed) return {};
+
+  for (const candidate of jsonCandidates(trimmed)) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(candidate);
+    } catch {
+      continue;
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) continue;
+
+    // The model returns the slot's contents directly (e.g. `{ "child_issues":
+    // [...] }`), not the wrapped form (`{ "plan": { "child_issues": [...] } }`).
+    // Wrap before validating.
+    const wrapped = { [methodToArtifactKey(method)]: parsed };
+    const result = JobArtifactsSchema.safeParse(wrapped);
+    if (result.success) return result.data;
+  }
+
+  log.warn(
+    { method, finalChars: finalText.length },
+    'claude-sdk: could not parse artifacts from final text — downstream tracking (e.g. plan auto-close) will skip this job',
+  );
+  return {};
+}
+
+/**
+ * Yield JSON candidates from `text` in priority order: whole-text first, then
+ * fenced blocks (last-emitted-wins per skill convention), then balanced
+ * trailing `{...}` substrings. Caller stops at the first one that parses AND
+ * passes the schema.
+ */
+function* jsonCandidates(text: string): Generator<string> {
+  // 1. Whole text (most common when the skill's last message is just the JSON).
+  yield text;
+
+  // 2. Fenced code blocks. Match ```json ... ``` and bare ``` ... ```. Iterate
+  //    in REVERSE so the last block (the model's "final answer") wins.
+  const fenceRe = /```(?:json)?\s*\n?([\s\S]*?)```/gi;
+  const fences: string[] = [];
+  for (let m = fenceRe.exec(text); m !== null; m = fenceRe.exec(text)) {
+    if (m[1]) fences.push(m[1].trim());
+  }
+  for (let i = fences.length - 1; i >= 0; i--) {
+    const f = fences[i];
+    if (f) yield f;
+  }
+
+  // 3. Balanced trailing `{...}`. Walk from the LAST `}` back to find a
+  //    balanced opening `{`. Cheap and avoids bringing in a JSON-finder dep.
+  for (let end = text.lastIndexOf('}'); end !== -1; end = text.lastIndexOf('}', end - 1)) {
+    let depth = 0;
+    let start = -1;
+    for (let i = end; i >= 0; i--) {
+      const c = text[i];
+      if (c === '}') depth++;
+      else if (c === '{') {
+        depth--;
+        if (depth === 0) { start = i; break; }
+      }
+    }
+    if (start >= 0) yield text.slice(start, end + 1);
+  }
+}
+
+function methodToArtifactKey(method: Method): keyof JobArtifacts {
+  switch (method) {
+    case 'plan': return 'plan';
+    case 'implement': return 'implement';
+    case 'review': return 'review';
+    case 'address_review': return 'address_review';
+    case 'merge': return 'merge';
+  }
+}
+
+// Visible for testing.
+export const __test = { extractArtifacts };
 
 /* ============================================================== */
 /*               Minimal structural types we rely on               */
