@@ -45,10 +45,12 @@ const PLAN_REVIEW_BASH_ALLOW = [
 ] as const;
 
 /**
- * Per-method tool scoping. Review/Plan don't need write access; AddressReview/
- * Implement do; Merge needs the narrowest set focused on git operations. The
- * model can still bypass via direct API calls if it really wants — these are
- * defense-in-depth, not a sandbox.
+ * Per-method tool scoping. Every method denies `Task` / `WebFetch` / `WebSearch`
+ * (the three amplifier tools defined in `ALWAYS_DENIED`). `plan` and `review`
+ * additionally deny write tools (`Write` / `Edit` / `NotebookEdit`) and gate
+ * `Bash` to a read-only allowlist (`PLAN_REVIEW_BASH_ALLOW`). `implement` /
+ * `address_review` / `merge` keep full `Bash` and only deny the three amplifiers.
+ * Defense-in-depth, not a sandbox — the model can still call APIs directly.
  */
 const TOOLS_BY_METHOD: Record<Method, { allowed?: string[]; disallowed?: string[] }> = {
   plan: {

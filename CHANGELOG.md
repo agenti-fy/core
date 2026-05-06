@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Tool scoping**: deny `Task`, `WebFetch`, `WebSearch` for all five methods; restrict `plan` and `review` to a read-only `Bash` allowlist (`gh *`, `git log/show/diff/rev-parse`, `ls`, `cat`). Closes #65.
+
 ### Fixed
 
 - CHANGELOG: align v0.1.0 "Combined-label routing" entry with the `agent:<persona>:<method>` format that actually shipped (was previously described as the older `agent:<persona>` + `task:<method>` split — follow-up to #76, surfaced by #80).
