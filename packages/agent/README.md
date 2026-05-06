@@ -59,7 +59,7 @@ Source: `src/index.ts`
 | `GET /health` | `health.ts` | Liveness probe; returns service name + uptime |
 | `GET /status` | `status.ts` | Current state, active job, last failure |
 | `POST /<method>` | `methods.ts` | Dispatch — one route per method (`plan`, `implement`, `review`, `address-review`, `merge`) |
-| `POST /reset` | `reset.ts` | Hot-reload turn budgets from env, re-parse SOUL, re-register with coordinator, clear FAILURE |
+| `POST /reset` | `reset.ts` | Hot-reload tunable config (turn budgets, timeout) from env, re-parse SOUL, re-register with coordinator, clear FAILURE |
 | `GET /jobs/:id` | `jobs.ts` | Single job record from in-memory history |
 | `GET /logs/stream` | `logs.ts` | SSE stream of structured log lines |
 | `GET /metrics` | `metrics.ts` | Prometheus exposition |
@@ -138,7 +138,7 @@ Each method has its own env var and default:
 
 `CLAUDE_MAX_TURNS` (legacy) overrides all per-method defaults when set; per-method vars take precedence over it. Budget exhaustion produces a `task_error` outcome and applies `needs-human` to the issue (same path as a timeout).
 
-**Hot-reload**: changing `CLAUDE_MAX_TURNS_*` env vars and calling `POST /reset` applies the new budgets on the next skill run without a process restart. Static-at-boot settings (`HOST`, `PORT`, `COORDINATOR_URL`, `AGENT_PUBLIC_URL`, `HEARTBEAT_INTERVAL_MS`, credentials) require a restart to take effect.
+**Hot-reload**: changing `CLAUDE_MAX_TURNS_*` or `CLAUDE_TIMEOUT_MS` and calling `POST /reset` applies the new value on the next skill run without a process restart. Static-at-boot settings (`HOST`, `PORT`, `COORDINATOR_URL`, `AGENT_PUBLIC_URL`, `HEARTBEAT_INTERVAL_MS`, credentials) require a restart to take effect.
 
 ## Local dev
 
