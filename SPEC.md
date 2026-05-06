@@ -76,7 +76,7 @@ type Status = 'IDLE' | 'BUSY' | 'FAILURE';
 
 - `IDLE` — no job in flight; willing to accept dispatches.
 - `BUSY` — job in flight; rejects further dispatches with HTTP 409.
-- `FAILURE` — sticky. Set only on **Claude SDK / auth / configuration** errors. Per-task errors return an error result but keep the agent IDLE. Cleared via `POST /reset`, which re-runs init: reloads per-method turn budgets (`CLAUDE_MAX_TURNS_*`) from env, re-parses SOUL, and re-registers with the coordinator. Static-at-boot settings (host/port, credentials, heartbeat interval) require a process restart. If init fails, FAILURE re-asserts.
+- `FAILURE` — sticky. Set only on **Claude SDK / auth / configuration** errors. Per-task errors return an error result but keep the agent IDLE. Cleared via `POST /reset`, which re-runs init: reloads per-method turn budgets (`CLAUDE_MAX_TURNS_*`) from env, re-parses SOUL, and re-registers with the coordinator. Static-at-boot settings (host/port, coordinator URL, agent public URL, credentials, heartbeat interval) require a process restart. If init fails, FAILURE re-asserts.
 
 #### Type (persona)
 
