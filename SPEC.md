@@ -247,14 +247,16 @@ Coordinator-polled. The coordinator polls `GET /status` until the agent transiti
 
 ### 6.4 Job result schema
 
+> **Authoritative source**: `packages/shared/src/rpc.ts` (`JobResultSchema`) — it carries field-level JSDoc. This block mirrors it for quick reference.
+
 ```ts
 type JobResult = {
   job_id: string;
   method: 'plan'|'implement'|'review'|'address_review'|'merge';
   repo: string;
   target_id: number;
-  outcome: 'success' | 'task_error' | 'sdk_failure' | 'auth_failure' | 'config_failure';
-  session_id: string;          // session used / created (always returned, agent persists separately)
+  outcome: 'success' | 'task_error' | 'orphaned' | 'sdk_failure' | 'auth_failure' | 'config_failure';
+  session_id: string | null;
   duration_ms: number;
   artifacts: {
     plan?:           { child_issues: number[] };
@@ -263,7 +265,13 @@ type JobResult = {
     address_review?: { commits_pushed: number; rerequested: boolean };
     merge?:          { merged: boolean; closed_issue?: number };
   };
+  final_text?: string;
   error?: { message: string; stack?: string };
+  usage_input?: number;
+  usage_output?: number;
+  usage_cache_read?: number;
+  usage_cache_write?: number;
+  cost_usd?: number;
 };
 ```
 
