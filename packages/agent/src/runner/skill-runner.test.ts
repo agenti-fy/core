@@ -419,6 +419,69 @@ describe('SkillRunner.run', () => {
     errSpy.mockRestore();
   });
 
+  describe('usage and cost propagation', () => {
+    it('success with full usage: populates all usage_* and cost_usd on JobResult', async () => {
+      d.adapter.next = {
+        outcome: 'success',
+        sessionId: 'sess-1',
+        artifacts: {},
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_read_input_tokens: 20,
+          cache_creation_input_tokens: 10,
+        },
+        costUsd: 0.0042,
+      };
+      d.state.startJob({ id: 'j_1', method: 'plan', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+      await runOnce(d.runner);
+
+      const result = d.state.getJob('j_1')?.result;
+      expect(result?.outcome).toBe('success');
+      expect(result?.usage_input).toBe(100);
+      expect(result?.usage_output).toBe(50);
+      expect(result?.usage_cache_read).toBe(20);
+      expect(result?.usage_cache_write).toBe(10);
+      expect(result?.cost_usd).toBe(0.0042);
+    });
+
+    it('task_error with partial usage: records available fields and omits missing ones', async () => {
+      d.adapter.next = {
+        outcome: 'task_error',
+        sessionId: 'sess-2',
+        artifacts: {},
+        error: { message: 'partial run failed' },
+        usage: { input_tokens: 42, output_tokens: 7 },
+        costUsd: 0.001,
+      };
+      d.state.startJob({ id: 'j_1', method: 'plan', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+      await runOnce(d.runner);
+
+      const result = d.state.getJob('j_1')?.result;
+      expect(result?.outcome).toBe('task_error');
+      expect(result?.usage_input).toBe(42);
+      expect(result?.usage_output).toBe(7);
+      expect(result?.usage_cache_read).toBeUndefined();
+      expect(result?.usage_cache_write).toBeUndefined();
+      expect(result?.cost_usd).toBe(0.001);
+    });
+
+    it('success without usage: leaves usage_* fields undefined', async () => {
+      d.adapter.next = { outcome: 'success', sessionId: 'sess-1', artifacts: {} };
+      d.state.startJob({ id: 'j_1', method: 'plan', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+      await runOnce(d.runner);
+
+      const result = d.state.getJob('j_1')?.result;
+      expect(result?.outcome).toBe('success');
+      expect(result?.usage_input).toBeUndefined();
+      expect(result?.usage_output).toBeUndefined();
+      expect(result?.cost_usd).toBeUndefined();
+    });
+  });
+
   describe('merge verification', () => {
     // Real incident: agenti-fy/example-calc#52 — conductor pushed the resolved
     // tree directly to main, then `gh pr close --delete-branch`-d the PR, and

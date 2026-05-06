@@ -154,6 +154,13 @@ export const JobResultSchema = z.object({
   /** Final assistant text (truncated at the agent boundary). Operator-visible. */
   final_text: z.string().optional(),
   error: z.object({ message: z.string(), stack: z.string().optional() }).optional(),
+  /** Anthropic SDK token counts for this run (maps input_tokens → usage_input, etc.). */
+  usage_input: z.number().int().nonnegative().optional(),
+  usage_output: z.number().int().nonnegative().optional(),
+  usage_cache_read: z.number().int().nonnegative().optional(),
+  usage_cache_write: z.number().int().nonnegative().optional(),
+  /** Total cost USD as reported by the SDK for this run. */
+  cost_usd: z.number().nonnegative().optional(),
 });
 export type JobResult = z.infer<typeof JobResultSchema>;
 

@@ -267,6 +267,19 @@ export class SkillRunner {
       }
     }
 
+    const usageFields: Pick<
+      JobResult,
+      'usage_input' | 'usage_output' | 'usage_cache_read' | 'usage_cache_write' | 'cost_usd'
+    > = {};
+    const u = output.usage;
+    if (u) {
+      if (typeof u['input_tokens'] === 'number') usageFields.usage_input = u['input_tokens'];
+      if (typeof u['output_tokens'] === 'number') usageFields.usage_output = u['output_tokens'];
+      if (typeof u['cache_read_input_tokens'] === 'number') usageFields.usage_cache_read = u['cache_read_input_tokens'];
+      if (typeof u['cache_creation_input_tokens'] === 'number') usageFields.usage_cache_write = u['cache_creation_input_tokens'];
+    }
+    if (output.costUsd !== undefined) usageFields.cost_usd = output.costUsd;
+
     const result: JobResult = {
       job_id: req.job_id,
       method: req.method,
@@ -278,6 +291,7 @@ export class SkillRunner {
       artifacts: output.artifacts,
       ...(output.finalText ? { final_text: truncate(output.finalText, 16000) } : {}),
       ...(output.error ? { error: output.error } : {}),
+      ...usageFields,
     };
     this.deps.state.completeJob(result);
     this.deps.metrics?.recordJob(req.method, output.outcome, result.duration_ms);
