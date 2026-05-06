@@ -1,13 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   desiredRoutingLabels,
+  monitorPullRequests,
+  shouldDispatchReviewLabel,
+  type PrMonitorConfig,
   type PrSnapshot,
   type ReviewSnapshot,
   __test,
 } from './pr-monitor.js';
 
 const REQUIRED = ['conductor', 'skeptic', 'scribe', 'crafter'] as const;
-const config = { requiredReviewers: REQUIRED };
+const config: PrMonitorConfig = { requiredReviewers: REQUIRED, maxReviewCycles: 5 };
 
 function review(
   authorPersona: string | null,
@@ -239,6 +242,281 @@ describe('desiredRoutingLabels', () => {
     ) ?? [];
     // skeptic still owes a current verdict → review label.
     expect(labels).toEqual(['agent:skeptic:review']);
+  });
+});
+
+describe('shouldDispatchReviewLabel', () => {
+  it('returns true when no previous SHA record (first dispatch)', () => {
+    expect(shouldDispatchReviewLabel('skeptic', pr(), null)).toBe(true);
+  });
+
+  it('returns true when HEAD SHA differs from last labeled SHA', () => {
+    expect(
+      shouldDispatchReviewLabel('skeptic', pr({ headSha: 'sha-new' }), 'sha-old'),
+    ).toBe(true);
+  });
+
+  it('returns false when HEAD SHA is unchanged and no stale CHANGES_REQUESTED', () => {
+    expect(
+      shouldDispatchReviewLabel('skeptic', pr({ headSha: 'sha-A', reviews: [] }), 'sha-A'),
+    ).toBe(false);
+  });
+
+  it('returns false when HEAD SHA unchanged and CHANGES_REQUESTED is on the current HEAD (not stale)', () => {
+    expect(
+      shouldDispatchReviewLabel(
+        'skeptic',
+        pr({ headSha: 'sha-A', reviews: [review('skeptic', 'CHANGES_REQUESTED', 'sha-A')] }),
+        'sha-A',
+      ),
+    ).toBe(false);
+  });
+
+  it('returns true when HEAD SHA unchanged but CHANGES_REQUESTED from persona is on an older commit', () => {
+    // Reviewer requested changes on sha-OLD; author pushed no new commit (still sha-A)
+    // but we should allow re-dispatch so the reviewer can confirm their concern was addressed.
+    expect(
+      shouldDispatchReviewLabel(
+        'skeptic',
+        pr({
+          headSha: 'sha-A',
+          reviews: [review('skeptic', 'CHANGES_REQUESTED', 'sha-OLD')],
+        }),
+        'sha-A',
+      ),
+    ).toBe(true);
+  });
+
+  it('returns false when stale CHANGES_REQUESTED is from a different persona', () => {
+    expect(
+      shouldDispatchReviewLabel(
+        'conductor',
+        pr({
+          headSha: 'sha-A',
+          reviews: [review('skeptic', 'CHANGES_REQUESTED', 'sha-OLD')],
+        }),
+        'sha-A',
+      ),
+    ).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* monitorPullRequests integration: SHA-skip and cycle-cap              */
+/* ------------------------------------------------------------------ */
+
+type StoreState = {
+  labeledShas: Map<string, string>;
+  cycleCounts: Map<string, number>;
+};
+
+function makeStore(init: Partial<StoreState> = {}) {
+  const s: StoreState = {
+    labeledShas: init.labeledShas ?? new Map(),
+    cycleCounts: init.cycleCounts ?? new Map(),
+  };
+  const shaKey = (repo: string, pr: number, persona: string) => `${repo}:${pr}:${persona}`;
+  const prKey = (repo: string, pr: number) => `${repo}:${pr}`;
+  return {
+    // required by monitorPullRequests
+    listRepos: () => [{ repo: 'owner/repo', active: true, poll_interval_s: 30, last_polled: null }],
+    getLastLabeledSha: (repo: string, prNum: number, persona: string): string | null =>
+      s.labeledShas.get(shaKey(repo, prNum, persona)) ?? null,
+    recordLabeledSha: (repo: string, prNum: number, persona: string, sha: string) => {
+      s.labeledShas.set(shaKey(repo, prNum, persona), sha);
+    },
+    hasAnyLabeledSha: (repo: string, prNum: number): boolean =>
+      [...s.labeledShas.keys()].some((k) => k.startsWith(`${repo}:${prNum}:`)),
+    getReviewCycleCount: (repo: string, prNum: number): number =>
+      s.cycleCounts.get(prKey(repo, prNum)) ?? 0,
+    incrementReviewCycleCount: (repo: string, prNum: number): number => {
+      const next = (s.cycleCounts.get(prKey(repo, prNum)) ?? 0) + 1;
+      s.cycleCounts.set(prKey(repo, prNum), next);
+      return next;
+    },
+    // expose state for assertions
+    _state: s,
+  };
+}
+
+function makePrApiData(
+  prNumber: number,
+  headSha: string,
+  labels: string[],
+  reviews: ReviewSnapshot[],
+) {
+  return {
+    number: prNumber,
+    head: { sha: headSha },
+    user: { login: 'agenti-fy-tinkerer[bot]' },
+    labels: labels.map((name) => ({ name })),
+    _reviews: reviews,
+  };
+}
+
+function makeGitHub(
+  prs: ReturnType<typeof makePrApiData>[],
+) {
+  const setLabels = vi.fn().mockResolvedValue({});
+  const createComment = vi.fn().mockResolvedValue({});
+  return {
+    paginate: {
+      iterator: async function* (
+        _fn: unknown,
+        _opts: unknown,
+      ): AsyncGenerator<{ data: typeof prs }> {
+        yield { data: prs };
+      },
+    },
+    pulls: {
+      list: vi.fn(),
+      listReviews: vi.fn().mockImplementation(
+        async ({ pull_number }: { pull_number: number }) => ({
+          data: (prs.find((p) => p.number === pull_number)?._reviews ?? []).map((r) => ({
+            user: { login: r.authorPersona ? `agenti-fy-${r.authorPersona}[bot]` : null },
+            state: r.state,
+            commit_id: r.commitId,
+            submitted_at: r.submittedAt,
+          })),
+        }),
+      ),
+    },
+    issues: { setLabels, createComment },
+  };
+}
+
+const monitorConfig: PrMonitorConfig = { requiredReviewers: ['skeptic'], maxReviewCycles: 3 };
+const noopLogger = {
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  child: () => noopLogger,
+} as unknown as Parameters<typeof monitorPullRequests>[3];
+
+describe('monitorPullRequests — SHA-skip guard', () => {
+  it('skips reviewer label when HEAD SHA is unchanged since last dispatch', async () => {
+    const store = makeStore({
+      // We already dispatched skeptic for 'sha-head'
+      labeledShas: new Map([['owner/repo:1:skeptic', 'sha-head']]),
+    });
+    // PR: no routing labels, skeptic has no verdict on current HEAD
+    const prData = makePrApiData(1, 'sha-head', [], []);
+    const github = makeGitHub([prData]);
+
+    await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
+
+    // setLabels should NOT be called (SHA unchanged → filter removes the review label → no-op)
+    expect(github.issues.setLabels).not.toHaveBeenCalled();
+  });
+
+  it('dispatches reviewer label when HEAD SHA changed', async () => {
+    const store = makeStore({
+      labeledShas: new Map([['owner/repo:1:skeptic', 'sha-old']]),
+    });
+    const prData = makePrApiData(1, 'sha-new', [], []);
+    const github = makeGitHub([prData]);
+
+    await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
+
+    expect(github.issues.setLabels).toHaveBeenCalledOnce();
+    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    expect(labels).toContain('agent:skeptic:review');
+  });
+
+  it('re-dispatches reviewer when same HEAD SHA but persona has stale CHANGES_REQUESTED', async () => {
+    const store = makeStore({
+      labeledShas: new Map([['owner/repo:1:skeptic', 'sha-A']]),
+    });
+    // CHANGES_REQUESTED from skeptic on an older commit — author hasn't pushed new code
+    // but the reviewer flagged something and never got a re-review
+    const prData = makePrApiData(1, 'sha-A', [], [
+      review('skeptic', 'CHANGES_REQUESTED', 'sha-OLD'),
+    ]);
+    const github = makeGitHub([prData]);
+
+    await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
+
+    expect(github.issues.setLabels).toHaveBeenCalledOnce();
+    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    expect(labels).toContain('agent:skeptic:review');
+  });
+
+  it('records the HEAD SHA after successfully dispatching reviewer labels', async () => {
+    const store = makeStore(); // no prior records
+    const prData = makePrApiData(1, 'sha-first', [], []);
+    const github = makeGitHub([prData]);
+
+    await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
+
+    expect(store._state.labeledShas.get('owner/repo:1:skeptic')).toBe('sha-first');
+  });
+});
+
+describe('monitorPullRequests — review-cycle cap', () => {
+  it('applies needs-human and posts comment when cycle count hits the cap', async () => {
+    const store = makeStore({
+      // Prior dispatches recorded — this is not the first review
+      labeledShas: new Map([['owner/repo:1:skeptic', 'sha-old']]),
+      // Already hit the cap (count === maxReviewCycles === 3)
+      cycleCounts: new Map([['owner/repo:1', 3]]),
+    });
+    const prData = makePrApiData(1, 'sha-new', [], []);
+    const github = makeGitHub([prData]);
+
+    await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
+
+    expect(github.issues.setLabels).toHaveBeenCalledOnce();
+    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    expect(labels).toContain('needs-human');
+    expect(labels).not.toContain('agent:skeptic:review');
+    expect(github.issues.createComment).toHaveBeenCalledOnce();
+  });
+
+  it('does not cap on the first review dispatch (no prior labeled SHA)', async () => {
+    const store = makeStore(); // pristine — first dispatch
+    const prData = makePrApiData(1, 'sha-first', [], []);
+    const github = makeGitHub([prData]);
+
+    await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
+
+    expect(github.issues.setLabels).toHaveBeenCalledOnce();
+    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    expect(labels).toContain('agent:skeptic:review');
+    expect(labels).not.toContain('needs-human');
+    // Cycle counter must NOT be incremented on the first dispatch
+    expect(store._state.cycleCounts.get('owner/repo:1') ?? 0).toBe(0);
+  });
+
+  it('increments cycle count on re-dispatch when below the cap', async () => {
+    const store = makeStore({
+      labeledShas: new Map([['owner/repo:1:skeptic', 'sha-old']]),
+      cycleCounts: new Map([['owner/repo:1', 1]]),
+    });
+    const prData = makePrApiData(1, 'sha-new', [], []);
+    const github = makeGitHub([prData]);
+
+    await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
+
+    expect(github.issues.setLabels).toHaveBeenCalledOnce();
+    expect(store._state.cycleCounts.get('owner/repo:1')).toBe(2);
+  });
+
+  it('allows the last cycle before the cap', async () => {
+    // count = 2, cap = 3: should still dispatch (not cap until count >= 3)
+    const store = makeStore({
+      labeledShas: new Map([['owner/repo:1:skeptic', 'sha-old']]),
+      cycleCounts: new Map([['owner/repo:1', 2]]),
+    });
+    const prData = makePrApiData(1, 'sha-new', [], []);
+    const github = makeGitHub([prData]);
+
+    await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
+
+    expect(github.issues.setLabels).toHaveBeenCalledOnce();
+    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    expect(labels).toContain('agent:skeptic:review');
+    expect(labels).not.toContain('needs-human');
   });
 });
 

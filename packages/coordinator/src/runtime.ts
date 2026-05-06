@@ -183,7 +183,10 @@ export function startRuntime(deps: RuntimeDeps): RuntimeHandles {
           const result = await monitorPullRequests(
             deps.github!,
             deps.store,
-            { requiredReviewers: deps.config.prMonitorRequiredReviewers },
+            {
+              requiredReviewers: deps.config.prMonitorRequiredReviewers,
+              maxReviewCycles: deps.config.prMaxReviewCycles,
+            },
             deps.logger,
           );
           if (result.routed > 0) {

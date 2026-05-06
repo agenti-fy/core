@@ -241,6 +241,36 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    id: 10,
+    name: 'pr-review-tracking',
+    up: (db) => {
+      // Tracks per-(repo, pr_number, persona) the last HEAD SHA we dispatched a
+      // review label for. The PR monitor uses this to skip re-dispatch when the
+      // HEAD hasn't changed (only labels/metadata changed), preventing spurious
+      // duplicate review jobs.
+      //
+      // Also tracks per-(repo, pr_number) the number of re-review cycles to
+      // enforce PR_MAX_REVIEW_CYCLES. Cycle 0 is always allowed (first review);
+      // the counter increments on each subsequent reviewer-label dispatch.
+      db.exec(`
+        CREATE TABLE pr_reviewer_sha (
+          repo TEXT NOT NULL,
+          pr_number INTEGER NOT NULL,
+          persona TEXT NOT NULL,
+          last_labeled_sha TEXT NOT NULL,
+          PRIMARY KEY (repo, pr_number, persona)
+        );
+
+        CREATE TABLE pr_review_cycles (
+          repo TEXT NOT NULL,
+          pr_number INTEGER NOT NULL,
+          cycle_count INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (repo, pr_number)
+        );
+      `);
+    },
+  },
+  {
     id: 5,
     name: 'agents-supported-methods-json-check',
     up: (db) => {
@@ -356,6 +386,19 @@ export interface PlanRecord {
   child_ids: number[];
   recorded_at: number;
   last_checked_at: number | null;
+}
+
+interface PrReviewerShaRow {
+  repo: string;
+  pr_number: number;
+  persona: string;
+  last_labeled_sha: string;
+}
+
+interface PrReviewCycleRow {
+  repo: string;
+  pr_number: number;
+  cycle_count: number;
 }
 
 function rowToAgent(row: AgentRow): AgentRecord {
@@ -726,6 +769,39 @@ export class CoordinatorStore {
     this.stmts.recordPlanCheck.run({ repo, parent_id, when });
   }
 
+  /* -------------------- pr_reviewer_sha -------------------- */
+
+  /** Last HEAD SHA we dispatched a review label for (repo, pr, persona). Null if never dispatched. */
+  getLastLabeledSha(repo: string, pr_number: number, persona: string): string | null {
+    return this.stmts.getLastLabeledSha.get({ repo, pr_number, persona })?.last_labeled_sha ?? null;
+  }
+
+  /** Record (or update) the SHA we dispatched a review label for. */
+  recordLabeledSha(repo: string, pr_number: number, persona: string, sha: string): void {
+    this.stmts.upsertLabeledSha.run({ repo, pr_number, persona, sha });
+  }
+
+  /** True if any reviewer has been dispatched for this PR (i.e. at least one SHA record exists). */
+  hasAnyLabeledSha(repo: string, pr_number: number): boolean {
+    const row = this.stmts.hasAnyLabeledSha.get({ repo, pr_number });
+    return (row?.e ?? 0) > 0;
+  }
+
+  /* -------------------- pr_review_cycles -------------------- */
+
+  /** Current re-review cycle count for this PR (0 if first review has not dispatched). */
+  getReviewCycleCount(repo: string, pr_number: number): number {
+    return this.stmts.getReviewCycleCount.get({ repo, pr_number })?.cycle_count ?? 0;
+  }
+
+  /**
+   * Atomically increment the re-review cycle count and return the new value.
+   * Inserts a row (count=1) if none exists.
+   */
+  incrementReviewCycleCount(repo: string, pr_number: number): number {
+    return this.stmts.incrementReviewCycleCount.get({ repo, pr_number })?.cycle_count ?? 1;
+  }
+
   /* -------------------- control -------------------- */
 
   isHalted(): boolean {
@@ -927,6 +1003,40 @@ function prepareStatements(db: Database.Database) {
     ),
     recordPlanCheck: db.prepare(
       `UPDATE plans SET last_checked_at = @when WHERE repo = @repo AND parent_id = @parent_id`,
+    ),
+
+    // pr_reviewer_sha
+    getLastLabeledSha: db.prepare<
+      { repo: string; pr_number: number; persona: string },
+      PrReviewerShaRow
+    >('SELECT * FROM pr_reviewer_sha WHERE repo = @repo AND pr_number = @pr_number AND persona = @persona'),
+    upsertLabeledSha: db.prepare(
+      `INSERT INTO pr_reviewer_sha (repo, pr_number, persona, last_labeled_sha)
+       VALUES (@repo, @pr_number, @persona, @sha)
+       ON CONFLICT(repo, pr_number, persona) DO UPDATE SET last_labeled_sha = excluded.last_labeled_sha`,
+    ),
+    hasAnyLabeledSha: db.prepare<
+      { repo: string; pr_number: number },
+      { e: number }
+    >(
+      `SELECT EXISTS(
+         SELECT 1 FROM pr_reviewer_sha WHERE repo = @repo AND pr_number = @pr_number
+       ) AS e`,
+    ),
+
+    // pr_review_cycles
+    getReviewCycleCount: db.prepare<
+      { repo: string; pr_number: number },
+      PrReviewCycleRow
+    >('SELECT * FROM pr_review_cycles WHERE repo = @repo AND pr_number = @pr_number'),
+    incrementReviewCycleCount: db.prepare<
+      { repo: string; pr_number: number },
+      { cycle_count: number }
+    >(
+      `INSERT INTO pr_review_cycles (repo, pr_number, cycle_count)
+       VALUES (@repo, @pr_number, 1)
+       ON CONFLICT(repo, pr_number) DO UPDATE SET cycle_count = cycle_count + 1
+       RETURNING cycle_count`,
     ),
 
     // control
