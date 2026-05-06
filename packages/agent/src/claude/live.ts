@@ -27,6 +27,23 @@ export interface LiveClaudeAdapterOptions {
   permissionMode?: 'bypassPermissions' | 'acceptEdits' | 'default' | 'plan';
 }
 
+// Denied for every method: Task spawns a child agent (doubles token cost);
+// WebFetch / WebSearch enable outbound network calls none of our skills need.
+const ALWAYS_DENIED = ['Task', 'WebFetch', 'WebSearch'] as const;
+
+// Bash commands allowed for plan / review. These methods only read code and
+// post GitHub comments — they must not push commits or modify worktree files.
+// git rev-parse is included because review.md uses it to verify HEAD SHA.
+const PLAN_REVIEW_BASH_ALLOW = [
+  'Bash(gh *)',            // gh issue/pr subcommands
+  'Bash(git log*)',        // history inspection
+  'Bash(git show*)',       // commit inspection
+  'Bash(git diff*)',       // diff inspection
+  'Bash(git rev-parse*)',  // HEAD SHA verification (review.md step 1)
+  'Bash(ls*)',             // directory listing
+  'Bash(cat*)',            // file reading + /tmp heredoc writes (plan.md step 5)
+] as const;
+
 /**
  * Per-method tool scoping. Review/Plan don't need write access; AddressReview/
  * Implement do; Merge needs the narrowest set focused on git operations. The
@@ -35,16 +52,22 @@ export interface LiveClaudeAdapterOptions {
  */
 const TOOLS_BY_METHOD: Record<Method, { allowed?: string[]; disallowed?: string[] }> = {
   plan: {
-    // Plan reads + creates issues; doesn't need to mutate code or push branches.
-    disallowed: ['Write', 'Edit', 'NotebookEdit'],
+    allowed: [...PLAN_REVIEW_BASH_ALLOW],
+    disallowed: [...ALWAYS_DENIED, 'Write', 'Edit', 'NotebookEdit'],
   },
   review: {
-    // Review reads + posts comments; no edits, no pushes.
-    disallowed: ['Write', 'Edit', 'NotebookEdit'],
+    allowed: [...PLAN_REVIEW_BASH_ALLOW],
+    disallowed: [...ALWAYS_DENIED, 'Write', 'Edit', 'NotebookEdit'],
   },
-  implement: {},
-  address_review: {},
-  merge: {},
+  implement: {
+    disallowed: [...ALWAYS_DENIED],
+  },
+  address_review: {
+    disallowed: [...ALWAYS_DENIED],
+  },
+  merge: {
+    disallowed: [...ALWAYS_DENIED],
+  },
 };
 
 /**
@@ -61,6 +84,32 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
     this.maxTurnsForMethod = opts.maxTurnsForMethod;
     this.timeoutMs = opts.timeoutMs;
     this.permissionMode = opts.permissionMode ?? 'bypassPermissions';
+  }
+
+  /**
+   * Assembles the options object passed to the Claude Agent SDK `query()` call.
+   * Extracted as a static method so unit tests can verify tool scoping per method
+   * without running a live SDK session.
+   */
+  static buildSdkOptions(
+    opts: SkillRunOptions,
+    context: { maxTurns: number; permissionMode: string; abortController: AbortController },
+  ): Record<string, unknown> {
+    const tools = TOOLS_BY_METHOD[opts.method];
+    const sdkOptions: Record<string, unknown> = {
+      cwd: opts.cwd,
+      systemPrompt: opts.personaBody
+        ? { type: 'preset', preset: 'claude_code', append: opts.personaBody }
+        : { type: 'preset', preset: 'claude_code' },
+      maxTurns: context.maxTurns,
+      permissionMode: context.permissionMode,
+      abortController: context.abortController,
+    };
+    if (opts.model) sdkOptions['model'] = opts.model;
+    if (opts.sessionId) sdkOptions['resume'] = opts.sessionId;
+    if (tools.allowed) sdkOptions['allowedTools'] = tools.allowed;
+    if (tools.disallowed) sdkOptions['disallowedTools'] = tools.disallowed;
+    return sdkOptions;
   }
 
   async run(opts: SkillRunOptions): Promise<SkillRunOutput> {
@@ -107,22 +156,11 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
     progressTimer.unref();
 
     try {
-      const tools = TOOLS_BY_METHOD[opts.method];
-      const sdkOptions: Record<string, unknown> = {
-        cwd: opts.cwd,
-        // Append persona to the bundled claude_code preset so we keep tool
-        // instructions and file-edit conventions intact.
-        systemPrompt: opts.personaBody
-          ? { type: 'preset', preset: 'claude_code', append: opts.personaBody }
-          : { type: 'preset', preset: 'claude_code' },
+      const sdkOptions = LiveClaudeAdapter.buildSdkOptions(opts, {
         maxTurns: this.maxTurnsForMethod(opts.method),
         permissionMode: this.permissionMode,
         abortController: ac,
-      };
-      if (opts.model) sdkOptions['model'] = opts.model;
-      if (opts.sessionId) sdkOptions['resume'] = opts.sessionId;
-      if (tools.allowed) sdkOptions['allowedTools'] = tools.allowed;
-      if (tools.disallowed) sdkOptions['disallowedTools'] = tools.disallowed;
+      });
 
       const stream = query({
         prompt: opts.skillPrompt,
