@@ -1,11 +1,11 @@
 ---
 project: agenti-fy
 version: 0.1.0
-status: draft
+status: current
 language: TypeScript
 runtime: Node 22+
 package_manager: pnpm
-generated: 2026-05-02
+generated: 2026-05-06
 predecessor: ../agenti-fi (XState/SQLite/long-lived poller architecture)
 ---
 
@@ -288,38 +288,26 @@ Coordinator does **not** expose direct dispatch endpoints for humans in v1 — a
 
 ### 8.1 Label vocabulary
 
-Because any persona can handle any method, routing requires **two orthogonal labels** on each routable item:
+Routing uses a **combined label** per (persona, method) pair, format `agent:<persona>:<method>`:
 
-**Persona label** (who) — exactly one of:
+- `agent:orchestrator:plan`
+- `agent:tinkerer:implement`
+- `agent:skeptic:review`
+- `agent:tinkerer:address-review`
+- `agent:conductor:merge`
+- (any persona × method combination; `agent:<custom-name>:<method>` for custom SOULs)
 
-- `agent:orchestrator`
-- `agent:conductor`
-- `agent:theorist`
-- `agent:tinkerer`
-- `agent:optimizer`
-- `agent:glue`
-- `agent:skeptic`
-- `agent:crafter`
-- `agent:scribe`
-- `agent:<custom-name>` (matches a SOUL with `type: custom` and that `name`)
+A single item may carry **multiple routing labels simultaneously** — for example `agent:skeptic:review` and `agent:scribe:review` — so multiple reviewers can process the same PR concurrently, each evolving its own label independently. (The previous two-label format `agent:<persona>` + `task:<method>` made this impossible: a shared `task:review` label couldn't survive once the first reviewer removed it. See `packages/shared/src/labels.ts` for the full rationale.)
 
-**Task label** (what) — exactly one of:
+The coordinator dispatches one job per routing label it finds, provided the item carries no matching in-progress marker.
 
-- `task:plan`
-- `task:implement`
-- `task:review`
-- `task:address-review`
-- `task:merge`
+**In-progress markers** — set by the receiving agent on accept; coordinator skips items already marked:
 
-The coordinator dispatches an item only when **both** a persona label and a task label are present and the item carries no in-flight marker.
-
-**In-flight markers** — set by the receiving agent on accept; coordinator skips items already marked:
-
-- `task:planning-in-progress`
-- `task:implementing-in-progress`
-- `task:reviewing-in-progress`
-- `task:addressing-in-progress`
-- `task:merging-in-progress`
+- `agent:<persona>:plan-in-progress`
+- `agent:<persona>:implement-in-progress`
+- `agent:<persona>:review-in-progress`
+- `agent:<persona>:address-review-in-progress`
+- `agent:<persona>:merge-in-progress`
 
 **System labels:**
 
@@ -330,17 +318,17 @@ The coordinator dispatches an item only when **both** a persona label and a task
 
 Who picks the persona label?
 
-- **Bootstrap**: the human (or external tool) opening an issue applies a persona label of their choice plus `task:plan`. A reasonable default for greenfield work is `agent:orchestrator`.
+- **Bootstrap**: the human (or external tool) opening an issue applies a combined routing label such as `agent:orchestrator:plan`.
 - **Plan output**: the planner persona that handled the parent decides which persona should *implement* each child issue and labels accordingly. SOUL prompt for Plan includes the available persona roster (from coordinator's `/agents`) so the planner's choices are constrained to running personas.
-- **Review output**: similarly, the reviewer persona (typically `skeptic`) chooses which persona should address feedback or perform the merge — usually the same persona that implemented the PR (recoverable from PR commit author or the `agent:*` label on the linked issue).
+- **Review output**: similarly, the reviewer persona (typically `skeptic`) chooses which persona should address feedback or perform the merge — usually the same persona that implemented the PR (recoverable from PR commit author or the `agent:<persona>:implement` label on the linked issue).
 
 Any persona is *capable* of any method; persona selection is an editorial choice that shapes voice and judgment, not a capability gate.
 
 ### 8.3 Coordinator dispatch rules
 
-For each work item the coordinator finds during a poll:
+For each `agent:<persona>:<method>` routing label the coordinator finds during a poll:
 
-1. Read its (`agent:<persona>`, `task:<method>`) pair.
+1. Extract `<persona>` and `<method>` from the combined label.
 2. Find an IDLE registered agent whose `type` matches `<persona>`. If none is IDLE, skip (try next poll).
 3. If multiple IDLE agents share the persona, pick least-recently-dispatched (round-robin).
 4. Insert a `jobs` row with status `dispatched`; the partial unique index on (repo, method, target_id) blocks duplicate dispatch.
@@ -352,40 +340,40 @@ If a referenced persona has **no registered agent at all**, the coordinator appl
 
 ```
 [human creates issue]
-  └─ labels: agent:orchestrator + task:plan
+  └─ label: agent:orchestrator:plan
        │
        ▼
    coordinator → POST /plan to an orchestrator-type agent
-       └─ agent flips: task:plan → task:planning-in-progress
+       └─ agent flips: agent:orchestrator:plan → agent:orchestrator:plan-in-progress
        └─ agent runs Plan skill:
             - rewrites parent issue body (Summary / Plan / Subtasks)
             - creates child issues, each with:
                 * "Parent: #<n>" link in body
-                * labels: agent:<chosen-persona> + task:implement
+                * label: agent:<chosen-persona>:implement
             - parent body gets a checklist of - [ ] #<child>
-       └─ agent removes both labels from parent (planning done)
+       └─ agent removes label from parent (planning done)
        │
        ▼
    coordinator → POST /implement for each child
-       └─ agent flips: task:implement → task:implementing-in-progress
+       └─ agent flips: agent:<persona>:implement → agent:<persona>:implement-in-progress
        └─ agent creates branch  feat/<agent-name>/<issue#>-<slug>
        └─ agent runs Implement skill, commits as SOUL git identity
        └─ agent opens PR linking the child issue
-       └─ agent removes labels from issue
-       └─ agent labels new PR: agent:skeptic + task:review (default reviewer persona)
+       └─ agent removes label from issue
+       └─ agent labels new PR: agent:skeptic:review (default reviewer persona)
        │
        ▼
    coordinator → POST /review on PR
-       └─ agent flips: task:review → task:reviewing-in-progress
+       └─ agent flips: agent:skeptic:review → agent:skeptic:review-in-progress
        └─ agent runs Review skill, posts review
-       └─ if changes_requested → swap PR labels to (agent:<implementer-persona>, task:address-review)
-       └─ if approved          → swap PR labels to (agent:conductor,           task:merge)
+       └─ if changes_requested → set PR label agent:<implementer-persona>:address-review
+       └─ if approved          → set PR label agent:conductor:merge
        │
        ┌────────────── changes_requested ──────────────┐
        ▼                                               ▼
    coordinator → POST /address-review on PR        coordinator → POST /merge on PR
-       └─ agent pushes fixes, sets PR labels         └─ agent rebases / resolves trivial
-          back to (agent:skeptic, task:review)         conflicts, merges PR, closes
+       └─ agent pushes fixes, sets PR label          └─ agent rebases / resolves trivial
+          back to agent:skeptic:review                 conflicts, merges PR, closes
           (loops back to Review)                       linked child issue (parent
                                                        auto-progresses via checkbox
                                                        flip in its body)
@@ -395,14 +383,14 @@ If a referenced persona has **no registered agent at all**, the coordinator appl
 
 - **Parent issue body**: rewritten with sections (Summary / Plan / Subtasks). Subtasks are a markdown task list of `- [ ] #<child>` so GitHub auto-tracks completion.
 - **Each child issue body**: `Parent: #<parent>` + the focused subtask spec.
-- Children are created with `(agent:<persona>, task:implement)` where the planner picks `<persona>` per child based on the work's nature (e.g. UI work → `crafter`, integration → `glue`, performance work → `optimizer`).
+- Children are created with label `agent:<persona>:implement` where the planner picks `<persona>` per child based on the work's nature (e.g. UI work → `crafter`, integration → `glue`, performance work → `optimizer`).
 
 ### 8.6 Two-phase post-review
 
 The Review skill outputs only the review verdict. **AddressReview** and **Merge** are distinct methods, picked by the coordinator from the task label the reviewer set:
 
-- `task:address-review` → POST `/address-review` (always: implement + push + re-request review)
-- `task:merge`          → POST `/merge` (always: ensure clean, merge, close linked issue)
+- `agent:<persona>:address-review` → POST `/address-review` (always: implement + push + re-request review)
+- `agent:<persona>:merge`          → POST `/merge` (always: ensure clean, merge, close linked issue)
 
 This avoids embedding "what to do next" inference inside a single addressing skill.
 
@@ -494,14 +482,14 @@ A small in-memory job registry (`Map<job_id, JobRecord>`) backs `GET /jobs/:id`.
 
 - **Per-agent**: only one BUSY job at a time. Subsequent dispatches → 409.
 - **Per-repo at coordinator**: the coordinator's `jobs` table holds a partial unique index on `(repo, method, target_id)` for active rows, preventing duplicate dispatch even if multiple agents could pick it up.
-- **Label-transition discipline**: agent flips `task:<method>` → `task:<method>-in-progress` on accept; coordinator skips items carrying any `*-in-progress` task label while polling. Surviving coordinator restart, this is the visible source of truth — re-dispatch is safe because the in-progress item won't be re-picked until the label is cleared (which the agent does on completion or a stale-marker sweeper does after a configurable timeout).
+- **Label-transition discipline**: agent flips `agent:<persona>:<method>` → `agent:<persona>:<method>-in-progress` on accept; coordinator skips items carrying a matching `*-in-progress` label while polling. Surviving coordinator restart, this is the visible source of truth — re-dispatch is safe because the in-progress item won't be re-picked until the label is cleared (which the agent does on completion or a stale-marker sweeper does after a configurable timeout).
 
 ## 13. Failure handling
 
 | Class | Status effect | Recovery |
 |---|---|---|
 | Per-task error (skill fails / GH push fails / etc.) | IDLE | Job result has `outcome=task_error`. The agent posts a failure comment (or falls back to writing into the issue body) and atomically swaps the in-progress label for `needs-human`. **No automatic retry.** |
-| Claude SDK / auth / config error returned by the adapter | FAILURE | Sticky. The agent posts a `needs-human` comment with the failure context and clears the in-progress label so the work poller does NOT re-route. Operator calls `POST /reset` after fixing the underlying issue. (Reverting to `task:<method>` would loop forever on the same broken state.) |
+| Claude SDK / auth / config error returned by the adapter | FAILURE | Sticky. The agent posts a `needs-human` comment with the failure context and clears the in-progress label so the work poller does NOT re-route. Operator calls `POST /reset` after fixing the underlying issue. (Restoring the routing label would loop forever on the same broken state.) |
 | Dispatch transport error | unchanged | Job stays in `dispatched` state. The job-completion poller reconciles via the agent's `/status` + `/jobs/:id`; if the agent has no record, the job is marked `orphaned` (failed) and the partial unique index is freed for re-dispatch. |
 | Container crash mid-job | (container restarts) | Job lost in-memory; coordinator's poll re-discovers via labels and re-dispatches. Stale `*-in-progress` cleared by the sweeper after `STALE_JOB_TIMEOUT_S` (default 1800s = 30 min); the sweeper runs every `STALE_JOB_SWEEP_S` (default 600s = 10 min) and only restores routing labels for items whose corresponding job is no longer active. |
 | Coordinator crash | n/a | SQLite is durable; on restart coordinator rebuilds in-flight view from `jobs` + GitHub label state. |
@@ -740,7 +728,7 @@ Drill-in shows the full `JobResult`, structured logs (NDJSON tail), and a link t
 
 #### (4) Repos
 
-Discovered repos with poll cadence, last-polled timestamp, and routable item counts (issues with `task:*` labels, PRs in review, etc.). Action: `P` toggle active/inactive (calls `PATCH /repos/:repo`).
+Discovered repos with poll cadence, last-polled timestamp, and routable item counts (issues with `agent:*` routing labels, PRs in review, etc.). Action: `P` toggle active/inactive (calls `PATCH /repos/:repo`).
 
 #### (5) Logs
 
@@ -856,7 +844,7 @@ agenti-fy/
 
 1. **Stale `*-in-progress` recovery**: should the agent persist current label transitions to disk so a crashed container can rollback its labels on restart, instead of relying solely on the coordinator's stale-job sweeper? (Probably v1.1.)
 2. **PR base branch**: assumed `main`. If a repo uses `master`/`develop`, it must be configurable per-repo (today: nothing; needed soon).
-3. **Plan re-run**: if a planner is invoked on an already-planned parent issue, should it append, replace, or refuse? Current spec implicitly refuses — coordinator only dispatches when both `agent:*` and `task:plan` are present, and the planner removes both on completion.
+3. **Plan re-run**: if a planner is invoked on an already-planned parent issue, should it append, replace, or refuse? Current spec implicitly refuses — coordinator only dispatches when `agent:<persona>:plan` is present, and the planner removes it on completion.
 4. ~~**Conflict resolution in Merge**~~: resolved — the Merge skill performs full semantic conflict resolution (read both sides, reconstruct intent, run tests, force-push with lease). `needs-human` is the fallback only when the conflict requires product/business judgment or tests fail in a way that needs out-of-scope changes. Conductor's `merge` model is sized accordingly (sonnet, not haiku).
 5. **Cost / token caps** per job? Not in v1 — operator monitors via Prometheus counters and the TUI.
 6. **Persona availability when planning**: the planner's prompt needs an up-to-date roster of registered personas (so it doesn't label a child for a persona that isn't running). Inject via `/agents` snapshot at job start, vs. let it discover via failed dispatches?
@@ -864,7 +852,7 @@ agenti-fy/
 ## 21. Implementation phases
 
 1. **Skeleton** — pnpm workspace, three packages (`shared`, `agent`, `coordinator`), zod schemas, fastify scaffolding, healthchecks, register/heartbeat.
-2. **Coordinator core** — SQLite, App-installation repo discovery, poll loop, two-label dispatch (`agent:*` + `task:*`), halt mechanism.
+2. **Coordinator core** — SQLite, App-installation repo discovery, poll loop, combined-label dispatch (`agent:<persona>:<method>`), halt mechanism.
 3. **Agent core** — SOUL.md parser (with bundled persona fallback), Claude Code SDK adapter, worktree manager, session pull/push to coordinator.
 4. **Skills & personas** — default `plan/implement/review/address-review/merge` skill prompts; bundled persona bodies for all nine built-ins; SOUL inline overrides.
 5. **End-to-end** — first run against a sandbox GitHub repo with the full nine-agent team.
