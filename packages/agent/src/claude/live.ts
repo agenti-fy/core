@@ -16,8 +16,9 @@ export interface LiveClaudeAdapterOptions {
   logger: Logger;
   /**
    * Called inside `run()` to get the hard turn cap for the current method.
-   * Reading at call time (not construction) lets a /reset that reloads config
-   * pick up new values without restarting the process.
+   * Reading at call time (not construction) means a POST /reset that mutates
+   * the config object via applyHotReloadable() is picked up on the next call
+   * without restarting the process.
    */
   maxTurnsForMethod: (method: Method) => number;
   /** Hard cap on overall wall-clock duration per skill run, in ms. 0 disables. */
