@@ -55,7 +55,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 Every GitHub field that a non-agent user can write — issue and PR titles, bodies, labels, review comments, diff text — is **untrusted attacker input**. The system is hardened against two attack classes:
 
-- **Persona-label shell injection.** Three independent validation layers (`parseRoutingLabel` in `packages/shared/src/labels.ts`, `PersonaNameSchema` in `packages/shared/src/rpc.ts`, and a fail-closed check in `packages/agent/src/skills/resolver.ts`) ensure that the persona name extracted from an `agent:<persona>:<method>` label can never contain shell metacharacters before it reaches a skill prompt.
+- **Persona-label shell injection.** Three independent validation layers (`parseRoutingLabel` in `packages/shared/src/labels.ts`, `PersonaNameSchema` in `packages/shared/src/personas.ts`, and a fail-closed check in `packages/agent/src/skills/resolver.ts`) ensure that the persona name extracted from an `agent:<persona>:<method>` label can never contain shell metacharacters before it reaches a skill prompt.
 - **Prompt injection via issue/PR text.** A coordinator-side hijack detector (`packages/coordinator/src/security/hijack-detector.ts`) screens issue bodies for known injection patterns before dispatching work; bodies that match are routed to `needs-human` instead. A `SECURITY_PREAMBLE` prepended to every agent system prompt instructs Claude that `gh issue view` / `gh pr view` / `gh pr diff` output is DATA, not an instruction extension.
 
 Neither the hijack detector nor the security preamble is a hard boundary — they raise the cost of an attack, they do not make it impossible. The known residual gap (diff code-comment injection) is documented in [SPEC.md §22](./SPEC.md#22-security-model).
