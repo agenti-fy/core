@@ -201,6 +201,27 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
+    id: 8,
+    name: 'plans',
+    up: (db) => {
+      // Records the parent→children relationship produced by every successful
+      // plan-skill run so a later loop can auto-close the parent when all its
+      // children are closed. completed_at IS NULL means the plan is still open.
+      db.exec(`
+        CREATE TABLE plans (
+          repo TEXT NOT NULL,
+          parent_id INTEGER NOT NULL,
+          child_ids TEXT NOT NULL CHECK (json_valid(child_ids)),
+          recorded_at INTEGER NOT NULL,
+          completed_at INTEGER,
+          last_checked_at INTEGER,
+          PRIMARY KEY (repo, parent_id)
+        );
+        CREATE INDEX plans_open ON plans(completed_at) WHERE completed_at IS NULL;
+      `);
+    },
+  },
+  {
     id: 5,
     name: 'agents-supported-methods-json-check',
     up: (db) => {
@@ -301,6 +322,23 @@ interface RepoRow {
   last_polled: number | null;
 }
 
+interface PlanRow {
+  repo: string;
+  parent_id: number;
+  child_ids: string;
+  recorded_at: number;
+  completed_at: number | null;
+  last_checked_at: number | null;
+}
+
+export interface PlanRecord {
+  repo: string;
+  parent_id: number;
+  child_ids: number[];
+  recorded_at: number;
+  last_checked_at: number | null;
+}
+
 function rowToAgent(row: AgentRow): AgentRecord {
   // Defensive parse: malformed supported_methods JSON would propagate up
   // through pickIdleAgentForPersona/listAgents and fail the whole dispatch
@@ -348,6 +386,23 @@ function rowToRepo(row: RepoRow): RepoRecord {
     poll_interval_s: row.poll_interval_s,
     active: row.active === 1,
     last_polled: row.last_polled,
+  };
+}
+
+function rowToPlan(row: PlanRow): PlanRecord {
+  let child_ids: number[] = [];
+  try {
+    const parsed: unknown = JSON.parse(row.child_ids);
+    if (Array.isArray(parsed)) child_ids = parsed as number[];
+  } catch {
+    // bad JSON in DB — leave empty
+  }
+  return {
+    repo: row.repo,
+    parent_id: row.parent_id,
+    child_ids,
+    recorded_at: row.recorded_at,
+    last_checked_at: row.last_checked_at,
   };
 }
 
@@ -604,6 +659,32 @@ export class CoordinatorStore {
     return this.stmts.listDepBlockedForRepo.all({ repo }).map((r) => r.target_id);
   }
 
+  /* -------------------- plans -------------------- */
+
+  /**
+   * Record or refresh the parent→children plan produced by a plan-skill run.
+   * On re-plan: overwrites child_ids, refreshes recorded_at, and resets
+   * completed_at to NULL so the auto-close loop re-evaluates the plan.
+   */
+  upsertPlan(repo: string, parent_id: number, child_ids: number[]): void {
+    this.stmts.upsertPlan.run({ repo, parent_id, child_ids: JSON.stringify(child_ids), now: Date.now() });
+  }
+
+  /** All plans where completed_at IS NULL. */
+  listOpenPlans(): PlanRecord[] {
+    return this.stmts.listOpenPlans.all().map(rowToPlan);
+  }
+
+  /** Set completed_at. Idempotent — safe to call on an already-complete plan. */
+  markPlanComplete(repo: string, parent_id: number, when: number = Date.now()): void {
+    this.stmts.markPlanComplete.run({ repo, parent_id, when });
+  }
+
+  /** Bump last_checked_at for diagnostic / back-off purposes. */
+  recordPlanCheck(repo: string, parent_id: number, when: number = Date.now()): void {
+    this.stmts.recordPlanCheck.run({ repo, parent_id, when });
+  }
+
   /* -------------------- control -------------------- */
 
   isHalted(): boolean {
@@ -772,6 +853,26 @@ function prepareStatements(db: Database.Database) {
     ),
     listDepBlockedForRepo: db.prepare<{ repo: string }, { target_id: number }>(
       'SELECT target_id FROM dep_blocked WHERE repo = @repo ORDER BY target_id',
+    ),
+
+    // plans
+    upsertPlan: db.prepare(
+      `INSERT INTO plans (repo, parent_id, child_ids, recorded_at, completed_at, last_checked_at)
+       VALUES (@repo, @parent_id, @child_ids, @now, NULL, NULL)
+       ON CONFLICT(repo, parent_id) DO UPDATE
+         SET child_ids = excluded.child_ids,
+             recorded_at = excluded.recorded_at,
+             completed_at = NULL`,
+    ),
+    listOpenPlans: db.prepare<[], PlanRow>(
+      `SELECT repo, parent_id, child_ids, recorded_at, last_checked_at, completed_at
+       FROM plans WHERE completed_at IS NULL ORDER BY recorded_at`,
+    ),
+    markPlanComplete: db.prepare(
+      `UPDATE plans SET completed_at = @when WHERE repo = @repo AND parent_id = @parent_id`,
+    ),
+    recordPlanCheck: db.prepare(
+      `UPDATE plans SET last_checked_at = @when WHERE repo = @repo AND parent_id = @parent_id`,
     ),
 
     // control
