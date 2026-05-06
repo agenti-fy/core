@@ -28,6 +28,8 @@ export interface LiveClaudeAdapterOptions {
    * is picked up on the next call without restarting the process. 0 disables.
    */
   timeoutMsGetter: () => number;
+  /** Per-job cost ceiling in USD. 0 disables. */
+  costLimitUsd: number;
   /** Permission mode for tool calls. Defaults to bypassPermissions for headless ops. */
   permissionMode?: 'bypassPermissions' | 'acceptEdits' | 'default' | 'plan';
 }
@@ -77,6 +79,10 @@ const TOOLS_BY_METHOD: Record<Method, { allowed?: string[]; disallowed?: string[
   },
 };
 
+// Warn once per process when a job completes without cost data, indicating
+// the SDK version doesn't report it (best-effort check, not a hard failure).
+let warnedNoCostData = false;
+
 /**
  * Production adapter wrapping the official Claude Agent SDK.
  */
@@ -84,12 +90,14 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
   private readonly logger: Logger;
   private readonly maxTurnsForMethod: (method: Method) => number;
   private readonly timeoutMsGetter: () => number;
+  private readonly costLimitUsd: number;
   private readonly permissionMode: NonNullable<LiveClaudeAdapterOptions['permissionMode']>;
 
   constructor(opts: LiveClaudeAdapterOptions) {
     this.logger = opts.logger;
     this.maxTurnsForMethod = opts.maxTurnsForMethod;
     this.timeoutMsGetter = opts.timeoutMsGetter;
+    this.costLimitUsd = opts.costLimitUsd;
     this.permissionMode = opts.permissionMode ?? 'bypassPermissions';
   }
 
@@ -139,6 +147,8 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
     let toolUseCount = 0;
     let usage: Record<string, unknown> | undefined;
     let costUsd: number | undefined;
+    let seenCostData = false;
+    let abortedForCostLimit = false;
 
     const ac = new AbortController();
     // ac.signal.aborted is the only signal we read in the catch — no need to
@@ -205,7 +215,24 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
           if (typeof r.result === 'string') resultText = r.result;
           if (typeof r.session_id === 'string') sessionId = r.session_id;
           if (r.usage) usage = r.usage;
-          if (typeof r.total_cost_usd === 'number') costUsd = r.total_cost_usd;
+          if (typeof r.total_cost_usd === 'number') {
+            costUsd = r.total_cost_usd;
+            seenCostData = true;
+            if (this.costLimitUsd > 0 && costUsd > this.costLimitUsd) {
+              abortedForCostLimit = true;
+              log.warn(
+                {
+                  costUsd,
+                  limitUsd: this.costLimitUsd,
+                  method: opts.method,
+                  repo: opts.repo,
+                  target_id: opts.target_id,
+                },
+                'claude-sdk: job cost limit exceeded, aborting',
+              );
+              ac.abort();
+            }
+          }
         }
       }
     } catch (err) {
@@ -227,23 +254,33 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
         return this.run({ ...opts, sessionId: null });
       }
 
-      // ac.signal.aborted is the source-of-truth for timeout: we own the
-      // controller and only abort it from the timeout. Don't depend on the
-      // SDK's wrapped error message containing the word "timeout".
-      const isTimeout = ac.signal.aborted;
+      // ac.signal.aborted is the source-of-truth for timeout/cost-limit: we
+      // own the controller and only abort it from those two paths. Don't
+      // depend on the SDK's wrapped error message.
+      const isAborted = ac.signal.aborted;
       const outcome: Extract<JobOutcome, 'auth_failure' | 'sdk_failure' | 'task_error'> =
-        isTimeout
+        isAborted
           ? 'task_error'
           : looksLikeAuthError(message)
             ? 'auth_failure'
             : 'sdk_failure';
-      log.error({ err: message, outcome, isTimeout }, 'claude-sdk: stream threw');
+      log.error(
+        { err: message, outcome, abortedForCostLimit, isTimeout: isAborted && !abortedForCostLimit },
+        'claude-sdk: stream threw',
+      );
+      const errorPayload = abortedForCostLimit
+        ? {
+            message: `cost limit exceeded: $${costUsd?.toFixed(4)} USD exceeds ceiling $${this.costLimitUsd} USD`,
+          }
+        : stack
+          ? { message, stack }
+          : { message };
       return {
         outcome,
         sessionId: outcome === 'auth_failure' ? null : sessionId,
         artifacts: {},
         finalText,
-        error: stack ? { message, stack } : { message },
+        error: errorPayload,
         // Forward whatever usage/cost we captured before the failure — partial
         // numbers are still useful for budget tracking.
         ...(usage ? { usage } : {}),
@@ -252,6 +289,12 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
     } finally {
       if (timer) clearTimeout(timer);
       clearInterval(progressTimer);
+      if (this.costLimitUsd > 0 && !seenCostData && !warnedNoCostData) {
+        warnedNoCostData = true;
+        log.warn(
+          'claude-sdk: SDK did not report cost data — cost ceiling check skipped (older SDK version?)',
+        );
+      }
     }
 
     if (resultErrorSubtype) {
@@ -397,7 +440,10 @@ function methodToArtifactKey(method: Method): keyof JobArtifacts {
 }
 
 // Visible for testing.
-export const __test = { extractArtifacts };
+export const __test = {
+  extractArtifacts,
+  resetNoCostWarn() { warnedNoCostData = false; },
+};
 
 /* ============================================================== */
 /*               Minimal structural types we rely on               */

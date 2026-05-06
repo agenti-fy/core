@@ -38,6 +38,7 @@ function pickClaudeAdapter(config: Config, logger: Logger): ClaudeAdapter {
       logger,
       maxTurnsForMethod: (method) => resolveMaxTurns(config, method),
       timeoutMsGetter: () => config.claudeTimeoutMs,
+      costLimitUsd: config.claudeCostLimitUsd,
     });
   }
   logger.warn('using StubClaudeAdapter — no real Claude calls will be made');
