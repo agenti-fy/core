@@ -88,6 +88,77 @@ describe('extractArtifacts', () => {
 });
 
 // ---------------------------------------------------------------------------
+// LiveClaudeAdapter.buildSdkOptions — per-method tool scoping
+// ---------------------------------------------------------------------------
+
+describe('LiveClaudeAdapter.buildSdkOptions', () => {
+  const baseOpts = {
+    repo: 'org/repo',
+    target_id: 1,
+    personaBody: '',
+    skillPrompt: 'do the thing',
+    systemPrompt: 'do the thing',
+    model: undefined,
+    sessionId: null,
+    cwd: '/tmp/wt',
+  };
+
+  const ctx = {
+    maxTurns: 100,
+    permissionMode: 'bypassPermissions',
+    abortController: new AbortController(),
+  };
+
+  const METHODS = ['plan', 'implement', 'review', 'address_review', 'merge'] as const;
+  const ALWAYS_DENIED = ['Task', 'WebFetch', 'WebSearch'];
+
+  it('denies Task, WebFetch, WebSearch for every method', () => {
+    for (const method of METHODS) {
+      const opts = LiveClaudeAdapter.buildSdkOptions({ ...baseOpts, method }, ctx);
+      const disallowed = opts['disallowedTools'] as string[];
+      expect(disallowed, `method=${method}`).toEqual(expect.arrayContaining(ALWAYS_DENIED));
+    }
+  });
+
+  it('plan and review additionally deny Write, Edit, NotebookEdit', () => {
+    for (const method of ['plan', 'review'] as const) {
+      const opts = LiveClaudeAdapter.buildSdkOptions({ ...baseOpts, method }, ctx);
+      const disallowed = opts['disallowedTools'] as string[];
+      expect(disallowed, `method=${method}`).toEqual(
+        expect.arrayContaining(['Write', 'Edit', 'NotebookEdit']),
+      );
+    }
+  });
+
+  it('implement, address_review, merge do NOT deny Write / Edit / NotebookEdit', () => {
+    for (const method of ['implement', 'address_review', 'merge'] as const) {
+      const opts = LiveClaudeAdapter.buildSdkOptions({ ...baseOpts, method }, ctx);
+      const disallowed = (opts['disallowedTools'] as string[]) ?? [];
+      expect(disallowed, `method=${method}`).not.toContain('Write');
+      expect(disallowed, `method=${method}`).not.toContain('Edit');
+      expect(disallowed, `method=${method}`).not.toContain('NotebookEdit');
+    }
+  });
+
+  it('plan and review carry a Bash allowlist covering gh and read-only git', () => {
+    const EXPECTED = ['Bash(gh *)', 'Bash(git log*)', 'Bash(git show*)', 'Bash(git diff*)', 'Bash(git rev-parse*)'];
+    for (const method of ['plan', 'review'] as const) {
+      const opts = LiveClaudeAdapter.buildSdkOptions({ ...baseOpts, method }, ctx);
+      const allowed = opts['allowedTools'] as string[];
+      expect(allowed, `method=${method}`).toEqual(expect.arrayContaining(EXPECTED));
+      expect(allowed, `bare Bash must not appear for method=${method}`).not.toContain('Bash');
+    }
+  });
+
+  it('implement, address_review, merge have no Bash allowlist (full Bash available)', () => {
+    for (const method of ['implement', 'address_review', 'merge'] as const) {
+      const opts = LiveClaudeAdapter.buildSdkOptions({ ...baseOpts, method }, ctx);
+      expect(opts['allowedTools'], `method=${method}`).toBeUndefined();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // resolveMaxTurns — per-method turn budget
 // ---------------------------------------------------------------------------
 
