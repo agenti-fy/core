@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `CLAUDE_COST_LIMIT_USD` (default `5.0` USD, `0` disables): per-job cost ceiling in the live adapter (#98). When the cumulative cost reported by the SDK crosses the ceiling the job is aborted with `task_error`. Documented in `.env.example`, `README.md`, `docker-compose.yml`, `docs/operations.md`, and `packages/agent/README.md`.
+
 ### Changed
 
 - **Tool scoping**: deny `Task`, `WebFetch`, `WebSearch` for all five methods; restrict `plan` and `review` to a read-only `Bash` allowlist (`gh *`, `git log/show/diff/rev-parse`, `ls`, `cat`). Closes #65.
