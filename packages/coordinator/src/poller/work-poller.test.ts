@@ -114,19 +114,23 @@ describe('work-poller hijack detection', () => {
         state: 'open',
       },
     ];
-    const github = makeGitHub(issues) as unknown as Parameters<typeof pollDueRepos>[0];
+    const github = makeGitHub(issues);
 
-    const outcome = await pollDueRepos(github, store, silentLog);
+    const outcome = await pollDueRepos(
+      github as unknown as Parameters<typeof pollDueRepos>[0],
+      store,
+      silentLog,
+    );
 
     expect(outcome.items).toHaveLength(0);
-    expect((github as ReturnType<typeof makeGitHub>)._addedLabels).toEqual([
+    expect(github._addedLabels).toEqual([
       { issue_number: 10, labels: ['needs-human'] },
     ]);
-    expect((github as ReturnType<typeof makeGitHub>)._postedComments).toHaveLength(1);
-    expect((github as ReturnType<typeof makeGitHub>)._postedComments[0]?.body).toContain(
+    expect(github._postedComments).toHaveLength(1);
+    expect(github._postedComments[0]?.body).toContain(
       'Possible prompt-injection attempt detected',
     );
-    expect((github as ReturnType<typeof makeGitHub>)._postedComments[0]?.body).toContain(
+    expect(github._postedComments[0]?.body).toContain(
       'ignore-previous-instructions',
     );
   });
