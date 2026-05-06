@@ -438,64 +438,125 @@ This avoids embedding "what to do next" inference inside a single addressing ski
 ### 11.1 Coordinator SQLite (better-sqlite3)
 
 ```sql
+-- CHECK constraint values mirror the Zod enums in packages/shared and are
+-- populated dynamically at startup via sqlList() in store.ts.
+
 CREATE TABLE agents (
-  agent_id TEXT PRIMARY KEY,        -- UUID, coordinator-assigned
-  name TEXT UNIQUE NOT NULL,        -- from SOUL.md
-  type TEXT NOT NULL,
-  version TEXT NOT NULL,
-  url TEXT NOT NULL,                -- where to dispatch
-  supported_methods TEXT NOT NULL,  -- JSON array
-  registered_at INTEGER NOT NULL,
-  last_heartbeat INTEGER
+  agent_id          TEXT PRIMARY KEY,       -- ULID, coordinator-assigned
+  name              TEXT UNIQUE NOT NULL,   -- from SOUL.md
+  type              TEXT NOT NULL CHECK (type IN (
+                      'orchestrator','conductor','theorist','tinkerer',
+                      'optimizer','glue','skeptic','crafter','scribe','custom'
+                    )),
+  version           TEXT NOT NULL,
+  url               TEXT NOT NULL,          -- where to dispatch
+  supported_methods TEXT NOT NULL CHECK (json_valid(supported_methods)),  -- JSON array of Method strings
+  registered_at     INTEGER NOT NULL,
+  last_heartbeat    INTEGER,
+  last_known_status TEXT CHECK (last_known_status IS NULL
+                      OR last_known_status IN ('IDLE','BUSY','FAILURE'))
 );
 
 CREATE TABLE sessions (
-  agent_id TEXT NOT NULL,
-  repo TEXT NOT NULL,               -- "<org>/<repo>"
+  agent_id   TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+  repo       TEXT NOT NULL,                -- "<org>/<repo>"
   session_id TEXT NOT NULL,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (agent_id, repo)
 );
 
 CREATE TABLE jobs (
-  job_id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  method TEXT NOT NULL,
-  repo TEXT NOT NULL,
-  target_id INTEGER NOT NULL,
-  status TEXT NOT NULL,             -- 'dispatched','running','complete','failed'
-  outcome TEXT,                     -- from JobResult.outcome
+  job_id        TEXT PRIMARY KEY,
+  agent_id      TEXT NOT NULL,
+  method        TEXT NOT NULL CHECK (method IN (
+                  'plan','implement','review','address_review','merge'
+                )),
+  repo          TEXT NOT NULL,
+  target_id     INTEGER NOT NULL,
+  persona_name  TEXT NOT NULL DEFAULT '',  -- routing-label persona segment; '' for pre-persona rows
+  status        TEXT NOT NULL CHECK (status IN (
+                  'dispatched','running','complete','failed','failed_to_dispatch'
+                )),
+  outcome       TEXT CHECK (outcome IS NULL OR outcome IN (
+                  'success','task_error','orphaned',
+                  'sdk_failure','auth_failure','config_failure'
+                )),
   dispatched_at INTEGER NOT NULL,
-  completed_at INTEGER,
-  result_json TEXT,
-  UNIQUE (repo, method, target_id, status)
-    WHERE status IN ('dispatched','running')
+  completed_at  INTEGER,
+  result_json   TEXT
 );
 
+CREATE UNIQUE INDEX jobs_unique_active
+  ON jobs(repo, persona_name, method, target_id)
+  WHERE status IN ('dispatched','running');
+
+CREATE INDEX jobs_by_agent         ON jobs(agent_id, status);
+CREATE INDEX jobs_by_completed_at  ON jobs(completed_at) WHERE status IN ('complete','failed');
+CREATE INDEX jobs_failed_dispatch  ON jobs(dispatched_at) WHERE status = 'failed_to_dispatch';
+CREATE INDEX jobs_agent_dispatched ON jobs(agent_id, dispatched_at DESC);
+
 CREATE TABLE repos (
-  repo TEXT PRIMARY KEY,            -- "<org>/<repo>"
+  repo            TEXT PRIMARY KEY,        -- "<org>/<repo>"
   poll_interval_s INTEGER NOT NULL DEFAULT 30,
-  active INTEGER NOT NULL DEFAULT 1,
-  last_polled INTEGER
+  active          INTEGER NOT NULL DEFAULT 1,
+  last_polled     INTEGER
 );
 
 CREATE TABLE control (
-  key TEXT PRIMARY KEY,             -- 'halted' etc.
-  value TEXT NOT NULL,
+  key        TEXT PRIMARY KEY,             -- 'halted' etc.
+  value      TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE dep_blocked (
+  repo       TEXT NOT NULL,
+  target_id  INTEGER NOT NULL,
+  blocked_at INTEGER NOT NULL,
+  PRIMARY KEY (repo, target_id)
+);
+
+CREATE INDEX dep_blocked_by_repo ON dep_blocked(repo);
+
+CREATE TABLE hijack_flagged (
+  repo       TEXT NOT NULL,
+  target_id  INTEGER NOT NULL,
+  body_hash  TEXT NOT NULL,               -- SHA of issue body at flag time
+  flagged_at INTEGER NOT NULL,
+  PRIMARY KEY (repo, target_id)
+);
+
 CREATE TABLE plans (
-  repo TEXT NOT NULL,
-  parent_id INTEGER NOT NULL,
-  child_ids TEXT NOT NULL CHECK (json_valid(child_ids)),  -- JSON array of child issue numbers
-  recorded_at INTEGER NOT NULL,
-  completed_at INTEGER,             -- NULL = plan still open; non-NULL = parent auto-closed
-  last_checked_at INTEGER,          -- last tick timestamp, for diagnostics
+  repo            TEXT NOT NULL,
+  parent_id       INTEGER NOT NULL,
+  child_ids       TEXT NOT NULL CHECK (json_valid(child_ids)),  -- JSON array of child issue numbers
+  recorded_at     INTEGER NOT NULL,
+  completed_at    INTEGER,               -- NULL = open; set when parent auto-closes
+  last_checked_at INTEGER,              -- last tick timestamp, for diagnostics
   PRIMARY KEY (repo, parent_id)
 );
 
 CREATE INDEX plans_open ON plans(completed_at) WHERE completed_at IS NULL;
+
+CREATE TABLE pr_reviewer_sha (
+  repo             TEXT NOT NULL,
+  pr_number        INTEGER NOT NULL,
+  persona          TEXT NOT NULL,
+  last_labeled_sha TEXT NOT NULL,        -- HEAD SHA at last reviewer-label dispatch
+  PRIMARY KEY (repo, pr_number, persona)
+);
+
+CREATE TABLE pr_review_cycles (
+  repo        TEXT NOT NULL,
+  pr_number   INTEGER NOT NULL,
+  cycle_count INTEGER NOT NULL DEFAULT 0,  -- increments on each re-review dispatch
+  PRIMARY KEY (repo, pr_number)
+);
+
+CREATE TABLE schema_migrations (
+  id         INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL,
+  applied_at INTEGER NOT NULL
+);
 ```
 
 The `plans` table records every parent→children relationship produced by a successful plan-skill run. Each row is keyed on `(repo, parent_id)` and holds the authoritative child issue list (`child_ids` JSON array). A row is "open" while `completed_at IS NULL`; the `plan-completion-poller` drains it by setting `completed_at` once the parent auto-closes. Re-planning the same parent overwrites `child_ids` and resets `completed_at` to NULL so the new child set gates the next auto-close. The `last_checked_at` column is updated on every poll tick and can be used for per-plan back-off or operator diagnostics.
