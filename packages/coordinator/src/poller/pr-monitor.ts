@@ -71,11 +71,23 @@ export interface MonitorOutcome {
 /**
  * Whether the PR monitor should dispatch a new review label for a given persona.
  *
- * Returns false (skip) when the current HEAD SHA matches the last SHA we
- * dispatched for AND there is no stale CHANGES_REQUESTED from that persona on
- * an older commit (which would mean the author addressed previous feedback and
- * the reviewer should re-examine even though no new code was pushed since the
- * last dispatch).
+ * The filter exists to avoid spurious duplicate review jobs when only labels
+ * or metadata changed on a PR whose code (HEAD SHA) is unchanged. It must NOT
+ * fire when the persona was labeled previously but never actually completed a
+ * review on this HEAD — that means the prior dispatch failed (hijack flag,
+ * agent crash, /reset, container restart, etc.) and re-dispatch is exactly
+ * what an operator clearing `needs-human` and re-adding the label is asking
+ * for. Earlier versions ignored this case and silently re-suppressed any
+ * manually-restored review label within the next pr-monitor tick.
+ *
+ * Suppress (return false) only when ALL of:
+ *   1. We have a recorded last-labeled SHA for this persona.
+ *   2. That SHA equals the current HEAD.
+ *   3. The persona has a non-dismissed verdict (APPROVED / CHANGES_REQUESTED /
+ *      COMMENTED) on the current HEAD — i.e. they actually ran.
+ *   4. They do NOT have a stale CHANGES_REQUESTED on an older commit (which
+ *      would mean the author addressed feedback without bumping HEAD and the
+ *      reviewer should re-examine).
  *
  * Exported for testing.
  */
@@ -86,8 +98,21 @@ export function shouldDispatchReviewLabel(
 ): boolean {
   if (lastLabeledSha === null) return true;
   if (snapshot.headSha !== lastLabeledSha) return true;
-  // Same HEAD SHA: skip unless the persona has a stale CHANGES_REQUESTED
-  // (review on an older commit that the author has since pushed past).
+
+  const hasCurrentVerdict = snapshot.reviews.some(
+    (r) =>
+      r.authorPersona === persona &&
+      r.commitId === snapshot.headSha &&
+      r.state !== 'DISMISSED' &&
+      r.state !== 'PENDING',
+  );
+  // No verdict on current HEAD → previous dispatch never produced a review;
+  // allow re-dispatch (this is the recovery path after needs-human clears).
+  if (!hasCurrentVerdict) return true;
+
+  // Verdict exists on current HEAD. Allow re-dispatch only if the persona
+  // also has a stale CHANGES_REQUESTED on an older commit (author addressed
+  // it via reply / dismissal of stale review without bumping HEAD).
   return snapshot.reviews.some(
     (r) =>
       r.authorPersona === persona &&

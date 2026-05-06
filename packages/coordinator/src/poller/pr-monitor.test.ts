@@ -256,9 +256,43 @@ describe('shouldDispatchReviewLabel', () => {
     ).toBe(true);
   });
 
-  it('returns false when HEAD SHA is unchanged and no stale CHANGES_REQUESTED', () => {
+  it('returns true when HEAD SHA is unchanged but persona has NO review on this HEAD (prior dispatch failed)', () => {
+    // Recovery path: skeptic was labeled at sha-A earlier, hit a hijack flag /
+    // crash / reset before producing a review. Operator clears needs-human
+    // and re-adds the label. We must allow re-dispatch — otherwise the label
+    // gets stripped within ~30s and the reviewer never runs.
     expect(
       shouldDispatchReviewLabel('skeptic', pr({ headSha: 'sha-A', reviews: [] }), 'sha-A'),
+    ).toBe(true);
+  });
+
+  it('returns true when HEAD SHA unchanged, lastLabeled matches, but only OTHER personas reviewed', () => {
+    // Same recovery path as above, with reviews from peers present. The
+    // suppression must look at THIS persona's reviews, not anyone's.
+    expect(
+      shouldDispatchReviewLabel(
+        'skeptic',
+        pr({
+          headSha: 'sha-A',
+          reviews: [
+            review('conductor', 'APPROVED', 'sha-A'),
+            review('scribe', 'APPROVED', 'sha-A'),
+          ],
+        }),
+        'sha-A',
+      ),
+    ).toBe(true);
+  });
+
+  it('returns false when HEAD SHA unchanged and persona has a current-HEAD verdict (no stale CHANGES_REQUESTED)', () => {
+    // True duplicate suppression: skeptic already approved this exact SHA.
+    // Re-labeling would dispatch a redundant review.
+    expect(
+      shouldDispatchReviewLabel(
+        'skeptic',
+        pr({ headSha: 'sha-A', reviews: [review('skeptic', 'APPROVED', 'sha-A')] }),
+        'sha-A',
+      ),
     ).toBe(false);
   });
 
@@ -287,13 +321,19 @@ describe('shouldDispatchReviewLabel', () => {
     ).toBe(true);
   });
 
-  it('returns false when stale CHANGES_REQUESTED is from a different persona', () => {
+  it('returns false when stale CHANGES_REQUESTED is from a different persona (and target persona already approved this HEAD)', () => {
+    // Conductor approved this exact SHA; another persona's stale CR shouldn't
+    // make us re-dispatch conductor. Without the current-verdict requirement,
+    // any stale CR from anyone could leak suppression for everyone.
     expect(
       shouldDispatchReviewLabel(
         'conductor',
         pr({
           headSha: 'sha-A',
-          reviews: [review('skeptic', 'CHANGES_REQUESTED', 'sha-OLD')],
+          reviews: [
+            review('conductor', 'APPROVED', 'sha-A'),
+            review('skeptic', 'CHANGES_REQUESTED', 'sha-OLD'),
+          ],
         }),
         'sha-A',
       ),
@@ -395,19 +435,45 @@ const noopLogger = {
 } as unknown as Parameters<typeof monitorPullRequests>[3];
 
 describe('monitorPullRequests — SHA-skip guard', () => {
-  it('skips reviewer label when HEAD SHA is unchanged since last dispatch', async () => {
+  it('skips reviewer label when HEAD SHA is unchanged AND persona already produced a verdict on this HEAD', async () => {
+    // Two required reviewers: skeptic finished APPROVE on this SHA, conductor
+    // hasn't reviewed at all (no lastLabeledSha → not suppressed). The output
+    // routing should be just `agent:conductor:review` — skeptic must be
+    // omitted because its verdict is already current.
+    const config: PrMonitorConfig = {
+      requiredReviewers: ['skeptic', 'conductor'],
+      maxReviewCycles: 3,
+    };
     const store = makeStore({
-      // We already dispatched skeptic for 'sha-head'
       labeledShas: new Map([['owner/repo:1:skeptic', 'sha-head']]),
     });
-    // PR: no routing labels, skeptic has no verdict on current HEAD
+    const prData = makePrApiData(1, 'sha-head', [], [
+      { authorPersona: 'skeptic', state: 'APPROVED', commitId: 'sha-head', submittedAt: '2026-01-01T00:00:00Z' },
+    ]);
+    const github = makeGitHub([prData]);
+
+    await monitorPullRequests(github as never, store as never, config, noopLogger);
+
+    expect(github.issues.setLabels).toHaveBeenCalledOnce();
+    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    expect(labels).toContain('agent:conductor:review');
+    expect(labels).not.toContain('agent:skeptic:review');
+  });
+
+  it('re-dispatches reviewer when HEAD SHA matches but persona produced no review (recovery path)', async () => {
+    // The dispatch landed but the agent never finished — hijack flag,
+    // crash, /reset, etc. Operator clears needs-human, expects re-dispatch.
+    const store = makeStore({
+      labeledShas: new Map([['owner/repo:1:skeptic', 'sha-head']]),
+    });
     const prData = makePrApiData(1, 'sha-head', [], []);
     const github = makeGitHub([prData]);
 
     await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
 
-    // setLabels should NOT be called (SHA unchanged → filter removes the review label → no-op)
-    expect(github.issues.setLabels).not.toHaveBeenCalled();
+    expect(github.issues.setLabels).toHaveBeenCalledOnce();
+    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    expect(labels).toContain('agent:skeptic:review');
   });
 
   it('dispatches reviewer label when HEAD SHA changed', async () => {

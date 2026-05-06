@@ -62,4 +62,38 @@ After #13 is merged, also revisit edge cases.
   it('handles "Depends on: none" (legacy phrasing)', () => {
     expect(parseDependencies('Depends on: none')).toEqual([]);
   });
+
+  it('does NOT match mid-sentence keyword usage in prose', () => {
+    // Real regression from agenti-fy/core#193 — the body said
+    // `the parent issue requires that "..." — so once #191's first subtask`
+    // and parseDependencies wrongly extracted 191. Mid-sentence "requires"
+    // / "depends on" / "after" must not anchor a dep declaration.
+    const body =
+      'The parent issue requires that the typecheck step works — once #191 ' +
+      'lands we can revisit. After #2 was opened, we paused this work. ' +
+      'This depends on #999 in spirit, not formally.\n';
+    expect(parseDependencies(body)).toEqual([]);
+  });
+
+  it('does NOT confuse `Parent: #N` (issue-template metadata) with a dep', () => {
+    expect(parseDependencies('Parent: #191\n\nimplementation notes')).toEqual([]);
+  });
+
+  it('still parses the canonical plan-template body correctly', () => {
+    const body = `Parent: #191
+
+## Context
+
+The parent issue requires the typecheck step. Once #191 lands we revisit.
+
+## Dependencies
+
+Depends on: #192
+
+## Notes
+
+Misc.
+`;
+    expect(parseDependencies(body)).toEqual([192]);
+  });
 });
