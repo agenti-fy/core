@@ -358,6 +358,7 @@ In the dashboard:
 | `r`       | Repos                                             |
 | `l`       | Logs                                              |
 | `h`       | Halt / resume (with confirmation)                 |
+| `↑↓`     | Move cursor (Agents/Jobs screens)                 |
 | `R`       | Reset selected agent (Agents screen)              |
 | `1`–`5`   | Set log min level (Logs screen)                   |
 | `PgUp/Dn` | Scroll log history                                |
