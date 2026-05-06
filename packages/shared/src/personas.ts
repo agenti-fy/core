@@ -1,5 +1,16 @@
 import { z } from 'zod';
 
+/** Allowlist: lowercase ASCII letter start, then lowercase alphanum / `_` / `-`, max 32 chars. */
+export const PERSONA_NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/;
+
+export function isValidPersonaName(s: string): boolean {
+  return PERSONA_NAME_RE.test(s);
+}
+
+export const PersonaNameSchema = z
+  .string()
+  .regex(PERSONA_NAME_RE, 'Persona name must match ^[a-z][a-z0-9_-]{0,31}$');
+
 export const BUILTIN_PERSONAS = [
   'orchestrator',
   'conductor',
