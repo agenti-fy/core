@@ -134,4 +134,25 @@ async function reconcileJob(
       );
     }
   }
+
+  // Record plan→children mapping so the auto-close loop can track completion.
+  if (
+    result.method === 'plan' &&
+    result.outcome === 'success' &&
+    (result.artifacts.plan?.child_issues?.length ?? 0) > 0
+  ) {
+    try {
+      const child_issues = result.artifacts.plan!.child_issues;
+      deps.store.upsertPlan(result.repo, result.target_id, child_issues);
+      deps.logger.info(
+        { repo: result.repo, parent_id: result.target_id, child_count: child_issues.length },
+        'plan recorded for auto-close tracking',
+      );
+    } catch (err) {
+      deps.logger.warn(
+        { repo: result.repo, parent_id: result.target_id, err: String(err) },
+        'failed to record plan — auto-close will retry on next plan run',
+      );
+    }
+  }
 }

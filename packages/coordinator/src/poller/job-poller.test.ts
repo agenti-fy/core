@@ -202,6 +202,86 @@ describe('pollJobCompletions', () => {
     store.close();
   });
 
+  describe('plan upsert recording', () => {
+    function planResult(over: Partial<JobResult> = {}): JobResult {
+      return jobResult({
+        method: 'plan',
+        outcome: 'success',
+        artifacts: { plan: { child_issues: [1, 2, 3] } },
+        ...over,
+      });
+    }
+
+    function setupIdleAgent(s: CoordinatorStore, c: FakeAgentClient, jobId = 'j_1') {
+      const a = regAgent(s);
+      s.recordHeartbeat(a.agent_id, 'BUSY');
+      insertActiveJob(s, a.agent_id, { job_id: jobId });
+      c.setStatus(a.url, {
+        status: 'IDLE',
+        agent_id: a.agent_id,
+        current_job: null,
+        last_failure: null,
+      });
+      return a;
+    }
+
+    it('calls upsertPlan when plan job succeeds with child_issues', async () => {
+      const a = setupIdleAgent(store, client);
+      client.setJob(a.url, 'j_1', planResult());
+
+      await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+
+      const plans = store.listOpenPlans();
+      expect(plans).toHaveLength(1);
+      expect(plans[0]?.repo).toBe('acme/api');
+      expect(plans[0]?.parent_id).toBe(7);
+      expect(plans[0]?.child_ids).toEqual([1, 2, 3]);
+      store.close();
+    });
+
+    it('does NOT call upsertPlan when child_issues is empty', async () => {
+      const a = setupIdleAgent(store, client);
+      client.setJob(a.url, 'j_1', planResult({ artifacts: { plan: { child_issues: [] } } }));
+
+      await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+
+      expect(store.listOpenPlans()).toHaveLength(0);
+      store.close();
+    });
+
+    it('does NOT call upsertPlan for non-plan method', async () => {
+      const a = regAgent(store, 'tinkerer-1', ['implement']);
+      store.recordHeartbeat(a.agent_id, 'BUSY');
+      insertActiveJob(store, a.agent_id, { method: 'implement' });
+      client.setStatus(a.url, {
+        status: 'IDLE',
+        agent_id: a.agent_id,
+        current_job: null,
+        last_failure: null,
+      });
+      client.setJob(a.url, 'j_1', jobResult({ method: 'implement', artifacts: {} }));
+
+      await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+
+      expect(store.listOpenPlans()).toHaveLength(0);
+      store.close();
+    });
+
+    it('does NOT call upsertPlan when plan outcome is task_error', async () => {
+      const a = setupIdleAgent(store, client);
+      client.setJob(
+        a.url,
+        'j_1',
+        planResult({ outcome: 'task_error', artifacts: { plan: { child_issues: [1, 2] } } }),
+      );
+
+      await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+
+      expect(store.listOpenPlans()).toHaveLength(0);
+      store.close();
+    });
+  });
+
   it('survives unreachable agent (status throws) without poisoning other agents', async () => {
     const a1 = regAgent(store, 'a1');
     const a2 = regAgent(store, 'a2');
