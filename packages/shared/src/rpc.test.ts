@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DispatchRequestSchema, RegisterRequestSchema } from './rpc.js';
+import { DispatchRequestSchema, JobResultSchema, RegisterRequestSchema } from './rpc.js';
 
 const VALID_REGISTER_BASE = {
   name: 'tinkerer',
@@ -86,5 +86,38 @@ describe('DispatchRequestSchema.persona_name uses PersonaNameSchema', () => {
 
   it('rejects names with uppercase letters', () => {
     expect(DispatchRequestSchema.safeParse({ ...VALID_DISPATCH_BASE, persona_name: 'BadName' }).success).toBe(false);
+  });
+});
+
+const VALID_JOB_RESULT_BASE = {
+  job_id: 'job-abc',
+  method: 'implement' as const,
+  repo: 'acme/api',
+  target_id: 1,
+  outcome: 'success' as const,
+  session_id: null,
+  duration_ms: 1000,
+  artifacts: {},
+};
+
+describe('JobResultSchema cost_usd rejects non-finite values', () => {
+  it('accepts a normal cost value', () => {
+    expect(JobResultSchema.safeParse({ ...VALID_JOB_RESULT_BASE, cost_usd: 0.0042 }).success).toBe(true);
+  });
+
+  it('accepts cost_usd: 0', () => {
+    expect(JobResultSchema.safeParse({ ...VALID_JOB_RESULT_BASE, cost_usd: 0 }).success).toBe(true);
+  });
+
+  it('accepts cost_usd absent (field is optional)', () => {
+    expect(JobResultSchema.safeParse({ ...VALID_JOB_RESULT_BASE }).success).toBe(true);
+  });
+
+  it('rejects Infinity', () => {
+    expect(JobResultSchema.safeParse({ ...VALID_JOB_RESULT_BASE, cost_usd: Infinity }).success).toBe(false);
+  });
+
+  it('rejects -Infinity', () => {
+    expect(JobResultSchema.safeParse({ ...VALID_JOB_RESULT_BASE, cost_usd: -Infinity }).success).toBe(false);
   });
 });
