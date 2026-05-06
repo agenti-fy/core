@@ -160,7 +160,7 @@ export const JobResultSchema = z.object({
   usage_cache_read: z.number().int().nonnegative().optional(),
   usage_cache_write: z.number().int().nonnegative().optional(),
   /** Total cost USD as reported by the SDK for this run. */
-  cost_usd: z.number().nonnegative().optional(),
+  cost_usd: z.number().nonnegative().finite().optional(),
 });
 export type JobResult = z.infer<typeof JobResultSchema>;
 
