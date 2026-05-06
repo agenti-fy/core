@@ -13,6 +13,8 @@ export class CoordinatorMetrics {
   readonly jobsTotal: Counter<'method' | 'outcome'>;
   readonly dispatchedTotal: Counter<'method' | 'kind'>;
   readonly dispatchLatency: Histogram<'method' | 'kind'>;
+  readonly invalidRoutingLabelsTotal: Counter<'repo'>;
+  readonly hijackAttemptsTotal: Counter<'repo' | 'pattern'>;
 
   constructor() {
     this.registry = new Registry();
@@ -41,6 +43,20 @@ export class CoordinatorMetrics {
       buckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000],
       registers: [this.registry],
     });
+
+    this.invalidRoutingLabelsTotal = new Counter({
+      name: 'agentify_coordinator_invalid_routing_labels_total',
+      help: 'Labels starting with agent: that fail parseRoutingLabel validation (malformed persona or unknown method). Attack-signal counter.',
+      labelNames: ['repo'],
+      registers: [this.registry],
+    });
+
+    this.hijackAttemptsTotal = new Counter({
+      name: 'agentify_coordinator_hijack_attempts_total',
+      help: 'Issue bodies that triggered the hijack detector, counted per matched pattern name. Incremented once per unique body per pattern.',
+      labelNames: ['repo', 'pattern'],
+      registers: [this.registry],
+    });
   }
 
   recordJobCompletion(method: Method, outcome: JobOutcome): void {
@@ -50,5 +66,13 @@ export class CoordinatorMetrics {
   recordDispatch(method: Method, kind: string, latencyMs: number): void {
     this.dispatchedTotal.inc({ method, kind });
     this.dispatchLatency.observe({ method, kind }, latencyMs);
+  }
+
+  recordInvalidRoutingLabel(repo: string): void {
+    this.invalidRoutingLabelsTotal.inc({ repo });
+  }
+
+  recordHijackAttempt(repo: string, pattern: string): void {
+    this.hijackAttemptsTotal.inc({ repo, pattern });
   }
 }
