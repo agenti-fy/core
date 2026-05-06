@@ -225,11 +225,11 @@ behave as expected.
 | | Persona body | Skill body |
 |---|---|---|
 | **What it is** | "Who the agent is" | "What to do right now" |
-| **SDK role** | `systemPrompt` (appended to the `claude_code` preset) | `prompt` (user message) |
+| **SDK role** | Leading entry of the stable `systemPrompt` string array (prompt-cache prefix) | `prompt` (user message) |
 | **Stays stable across session turns?** | Yes — set once at session start | No — changes per method dispatch |
 | **Where it comes from** | Text before the first `## Skill:` heading (or built-in personas file) | `## Skill: <method>` section, else bundled default |
 
-Source: `packages/agent/src/claude/live.ts:101-118` (SDK call assembly),
+Source: `packages/agent/src/claude/live.ts:115-124` (SDK call assembly),
 `packages/agent/src/skills/resolver.ts:33-44` (`ResolvedSkill` interface).
 
 For built-in persona types the persona body is loaded from
