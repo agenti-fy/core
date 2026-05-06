@@ -46,7 +46,10 @@ export function buildParsedResultCache(jobs: JobRecord[], prevCache: ParsedCache
 }
 
 export function Jobs({ state, selectedIndex }: { state: AppState; selectedIndex: number }): React.ReactElement {
-  const recentSlice = state.recentJobs.slice(0, 25);
+  const recentSlice = useMemo(
+    () => state.recentJobs.slice(0, 25),
+    [state.recentJobs],
+  );
   // useMemo + post-commit ref (not ref mutation during render): keeps prev-snapshot stable under Strict Mode / concurrent re-renders so cache reuse stays correct (see #179).
   const prevCacheRef = useRef<ParsedCache>(new Map());
   const parsedMap = useMemo(
