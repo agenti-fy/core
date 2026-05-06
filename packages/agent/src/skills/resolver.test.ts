@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { resolveSkill, SECURITY_PREAMBLE, InvalidPersonaNameError } from './resolver.js';
 import type { ParsedSoul } from '@agentify/shared';
-import { resolveSkill, InvalidPersonaNameError } from './resolver.js';
 
 function makeSoul(overrides: Partial<ParsedSoul> = {}): ParsedSoul {
   return {
@@ -15,12 +15,57 @@ function makeSoul(overrides: Partial<ParsedSoul> = {}): ParsedSoul {
   };
 }
 
+function makeBuiltinSoul(): ParsedSoul {
+  return {
+    frontmatter: {
+      name: 'tinkerer',
+      type: 'tinkerer',
+      version: '0.1.0',
+    },
+    personaBody: 'You are The Tinkerer.',
+    skillOverrides: {},
+  };
+}
+
+function makeCustomSoul(): ParsedSoul {
+  return {
+    frontmatter: {
+      name: 'my-agent',
+      type: 'custom',
+      version: '0.1.0',
+    },
+    personaBody: 'You are a custom agent.',
+    skillOverrides: {},
+  };
+}
+
 const BASE_OPTS = {
   soul: makeSoul(),
   method: 'implement' as const,
   repo: 'owner/repo',
   target_id: 1,
 };
+
+describe('SECURITY_PREAMBLE', () => {
+  it('is a non-empty string', () => {
+    expect(typeof SECURITY_PREAMBLE).toBe('string');
+    expect(SECURITY_PREAMBLE.length).toBeGreaterThan(0);
+  });
+
+  it('mentions the attacker model', () => {
+    expect(SECURITY_PREAMBLE).toContain('external GitHub user');
+  });
+
+  it('states the data-not-instructions rule', () => {
+    expect(SECURITY_PREAMBLE).toContain('DATA');
+    expect(SECURITY_PREAMBLE).toContain('not');
+  });
+
+  it('names the hijack response', () => {
+    expect(SECURITY_PREAMBLE).toContain('needs-human');
+    expect(SECURITY_PREAMBLE).toContain('hijack');
+  });
+});
 
 describe('resolveSkill — personaName validation', () => {
   it('accepts a valid lowercase persona name', () => {
@@ -124,5 +169,52 @@ describe('resolveSkill — positive control with skill override', () => {
     const result = resolveSkill({ ...BASE_OPTS, soul, personaName: 'tinkerer' });
     expect(result.source).toBe('soul');
     expect(result.skillPrompt).toBe('Custom implement body tinkerer.');
+  });
+});
+
+describe('resolveSkill — security preamble', () => {
+  it('prepends SECURITY_PREAMBLE to personaBody for a built-in soul', () => {
+    const result = resolveSkill({
+      soul: makeBuiltinSoul(),
+      method: 'implement',
+      repo: 'owner/repo',
+      target_id: 1,
+      personaName: 'tinkerer',
+    });
+    expect(result.personaBody.startsWith(SECURITY_PREAMBLE.trimEnd())).toBe(true);
+  });
+
+  it('prepends SECURITY_PREAMBLE to personaBody for a custom soul', () => {
+    const result = resolveSkill({
+      soul: makeCustomSoul(),
+      method: 'implement',
+      repo: 'owner/repo',
+      target_id: 2,
+      personaName: 'my-agent',
+    });
+    expect(result.personaBody.startsWith(SECURITY_PREAMBLE.trimEnd())).toBe(true);
+  });
+
+  it('includes SECURITY_PREAMBLE in the combined systemPrompt', () => {
+    const result = resolveSkill({
+      soul: makeBuiltinSoul(),
+      method: 'plan',
+      repo: 'owner/repo',
+      target_id: 42,
+      personaName: 'tinkerer',
+    });
+    expect(result.systemPrompt).toContain(SECURITY_PREAMBLE.trim());
+  });
+
+  it('retains the original persona prose after the preamble', () => {
+    const soul = makeBuiltinSoul();
+    const result = resolveSkill({
+      soul,
+      method: 'implement',
+      repo: 'owner/repo',
+      target_id: 1,
+      personaName: 'tinkerer',
+    });
+    expect(result.personaBody).toContain(soul.personaBody);
   });
 });
