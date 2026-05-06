@@ -211,7 +211,7 @@ function JobDetail({
         </Box>
         <Box flexDirection="column">
           <Text dimColor>cost</Text>
-          <Text color={cost_usd !== undefined && cost_usd > 0 ? 'green' : undefined}>
+          <Text color={cost_usd !== undefined && cost_usd > 0 ? 'green' : 'grey'}>
             {formatCost(cost_usd)}
           </Text>
         </Box>
