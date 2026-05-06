@@ -434,7 +434,7 @@ CLEANUP=1 \
                                         on success: remove in-progress + routing label
                                         on failure: comment + needs-human
                                         state.completeJob → IDLE
-                                        coordinator.putSession(session_id)
+                                        coordinator.putSession(session_id)*
               │
               ▼
    job-poller's /status sees IDLE
@@ -442,6 +442,8 @@ CLEANUP=1 \
    updateJobStatus(complete|failed)
    recordHeartbeat(IDLE)
 ```
+
+`*` skipped for `review` / `merge`; see [SPEC §9](SPEC.md#9-session-management).
 
 ### Outcomes
 
