@@ -43,8 +43,11 @@ An empty `## Skill:` section is treated as "no override" and falls through
 to the bundled default (`resolver.ts:64`). This prevents an accidental blank
 section from silently sending an empty prompt.
 
-After the body is chosen, template tokens are interpolated
-(`resolver.ts:127-131`) and the result is returned as `skillPrompt`.
+After the body is chosen, only `{{signature}}` is interpolated into the
+template (`resolver.ts:82-84`). The four per-job tokens (`{{repo}}`,
+`{{target_id}}`, `{{persona}}`, `{{agent_name}}`) are left as literal
+placeholders; their values are appended as a trailing **Task vars** block
+and the two together form `skillPrompt`.
 
 ---
 
@@ -53,13 +56,13 @@ After the body is chosen, template tokens are interpolated
 Tokens use the form `{{token_name}}`. Unknown tokens are passed through
 unchanged rather than replaced with an empty string.
 
-| Token | Value | Source |
-|---|---|---|
-| `{{repo}}` | Repository slug, e.g. `owner/repo` | `ResolveOptions.repo` |
-| `{{target_id}}` | Issue or PR number (string) | `ResolveOptions.target_id` |
-| `{{agent_name}}` | Soul `name` frontmatter field | `soul.frontmatter.name` |
-| `{{persona}}` | Routing-label persona segment | See note below |
-| `{{signature}}` | Closing line for GitHub comments | See note below |
+| Token | Value | Source | Where it appears |
+|---|---|---|---|
+| `{{repo}}` | Repository slug, e.g. `owner/repo` | `ResolveOptions.repo` | Task vars block |
+| `{{target_id}}` | Issue or PR number (string) | `ResolveOptions.target_id` | Task vars block |
+| `{{agent_name}}` | Soul `name` frontmatter field | `soul.frontmatter.name` | Task vars block |
+| `{{persona}}` | Routing-label persona segment | See note below | Task vars block |
+| `{{signature}}` | Closing line for GitHub comments | See note below | Stable template body |
 
 **`{{persona}}`** — for built-in souls (orchestrator, conductor, theorist,
 tinkerer, optimizer, glue, skeptic, crafter, scribe) this equals the soul's
@@ -73,11 +76,16 @@ for custom souls. Source: `resolver.ts:119-125`.
 
 **Common uses in bundled prompts:**
 
-- `--remove-label "agent:{{persona}}:plan"` — removes the routing label
-  atomically for the correct persona, safe when multiple personas run
-  in parallel on the same target.
-- `Closes #{{target_id}}` — links the PR to the parent issue.
-- `{{signature}}` at the end of every GitHub comment or issue body.
+The bundled defaults still contain literal `{{persona}}`, `{{target_id}}`,
+and `{{agent_name}}` tokens in their bodies. Because these are no longer
+substituted into the template, the model reads their values from the
+trailing **Task vars** block and applies them when executing commands.
+
+- `--remove-label "agent:{{persona}}:plan"` — the model substitutes the
+  `Persona:` value from Task vars to build the correct label for this run.
+- `Closes #{{target_id}}` — the model uses the `Target:` value from Task vars.
+- `{{signature}}` at the end of every GitHub comment or issue body — this
+  token IS interpolated directly into the stable template.
 
 ---
 
@@ -200,9 +208,12 @@ pull request titled with the issue title.
 `{ "branch": "<branch>", "pr_number": <n> }`
 ```
 
-All five tokens (`{{repo}}`, `{{target_id}}`, `{{agent_name}}`, `{{persona}}`,
-`{{signature}}`) are available in every skill body regardless of whether it
-comes from SOUL.md or the bundled default.
+All five tokens are available in every skill body regardless of whether it
+comes from SOUL.md or the bundled default. `{{signature}}` is interpolated
+directly into the stable template. The remaining four (`{{repo}}`,
+`{{target_id}}`, `{{agent_name}}`, `{{persona}}`) appear in the **Task vars**
+block appended after the skill body — the model reads that block and uses the
+values when executing commands in the prompt.
 
 ---
 

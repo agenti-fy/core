@@ -80,11 +80,10 @@ export interface ResolveOptions {
   repo: string;
   target_id: number;
   /**
-   * Routing-label persona segment. Used to interpolate `{{persona}}` in
-   * skill prompts (e.g. `--remove-label "agent:{{persona}}:review"`). For
-   * built-ins this equals the soul's `type`, but for custom souls it
-   * matches the soul's `name` instead — using `type` for custom souls
-   * would interpolate the literal `"custom"` and break the label.
+   * Routing-label persona segment. Placed in the Task vars block as the
+   * `Persona:` value. For built-ins this equals the soul's `type`, but for
+   * custom souls it matches the soul's `name` instead — using `type` for
+   * custom souls would produce the literal `"custom"` and break the label.
    */
   personaName: string;
 }
@@ -108,7 +107,10 @@ export class InvalidPersonaNameError extends Error {
  * Build the prompt for a single skill invocation. The persona body comes from
  * the SOUL (or bundled default for built-ins); the skill body comes from the
  * SOUL override (`## Skill: <method>`) when present, otherwise the bundled
- * default. Template tokens like `{{repo}}` and `{{target_id}}` are interpolated.
+ * default. Only `{{signature}}` is interpolated into the stable template;
+ * per-job tokens (`{{repo}}`, `{{target_id}}`, `{{persona}}`, `{{agent_name}}`)
+ * are left as literal placeholders and their values appear in the trailing
+ * Task vars block.
  */
 export function resolveSkill(opts: ResolveOptions): ResolvedSkill {
   if (!isValidPersonaName(opts.personaName)) {
