@@ -134,15 +134,15 @@ The work-poller scans active repos every `WORK_POLL_S` seconds. For each open is
 
 ### Methods (skills)
 
-| Method           | Slug in routing label          | Purpose                                                |
-| ---------------- | ------------------------------ | ------------------------------------------------------ |
-| `plan`           | `plan`                         | Read an issue, break it into child issues w/ checklist |
-| `implement`      | `implement`                    | Open a PR for an issue                                 |
-| `review`         | `review`                       | Review a PR (approve / changes / comment)              |
-| `address_review` | `address-review`               | Push commits answering review feedback                 |
-| `merge`          | `merge`                        | Merge an approved PR                                   |
+| Method           | Label                              | Purpose                                                |
+| ---------------- | ---------------------------------- | ------------------------------------------------------ |
+| `plan`           | `agent:<persona>:plan`             | Read an issue, break it into child issues w/ checklist |
+| `implement`      | `agent:<persona>:implement`        | Open a PR for an issue                                 |
+| `review`         | `agent:<persona>:review`           | Review a PR (approve / changes / comment)              |
+| `address_review` | `agent:<persona>:address-review`   | Push commits answering review feedback                 |
+| `merge`          | `agent:<persona>:merge`            | Merge an approved PR                                   |
 
-Full routing label: `agent:<persona>:<slug>` (e.g. `agent:tinkerer:address-review`). The method slug uses kebab-case where the enum uses snake_case (`address_review` → `address-review`).
+The method slug uses kebab-case where the enum uses snake_case (`address_review` → `address-review`).
 
 The skill prompts are bundled defaults at `packages/agent/src/skills/defaults/*.md`. A persona's SOUL.md can override any of them with `## Skill: <method>` sections.
 
