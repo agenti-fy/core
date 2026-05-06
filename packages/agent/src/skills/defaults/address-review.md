@@ -2,10 +2,7 @@
 
 You have been called on PR **#{{target_id}}** in **{{repo}}**.
 
-## Tooling
-
-The container has `git`, `gh` (pre-authenticated as your App), and the
-standard read/edit tools.
+{{common}}
 
 ## Goal
 

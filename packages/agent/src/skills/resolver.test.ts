@@ -172,6 +172,30 @@ describe('resolveSkill — positive control with skill override', () => {
   });
 });
 
+describe('resolveSkill — {{common}} interpolation', () => {
+  it('expands {{common}} in the default skill prompts', () => {
+    const result = resolveSkill({ ...BASE_OPTS, personaName: 'tinkerer' });
+    expect(result.skillPrompt).toContain('## Tooling');
+    expect(result.skillPrompt).toContain('## Routing label format');
+    expect(result.skillPrompt).not.toContain('{{common}}');
+  });
+
+  it('expands {{common}} in a custom soul skill override', () => {
+    const soul = makeSoul({ skillOverrides: { implement: 'Preamble:\n\n{{common}}\n\nBody.' } });
+    const result = resolveSkill({ ...BASE_OPTS, soul, personaName: 'tinkerer' });
+    expect(result.skillPrompt).toContain('## Tooling');
+    expect(result.skillPrompt).toContain('## Routing label format');
+    expect(result.skillPrompt).not.toContain('{{common}}');
+    expect(result.source).toBe('soul');
+  });
+
+  it('leaves {{common}} unexpanded when it appears nowhere in the template', () => {
+    const soul = makeSoul({ skillOverrides: { implement: 'No tokens here.' } });
+    const result = resolveSkill({ ...BASE_OPTS, soul, personaName: 'tinkerer' });
+    expect(result.skillPrompt).toBe('No tokens here.');
+  });
+});
+
 describe('resolveSkill — security preamble', () => {
   it('prepends SECURITY_PREAMBLE to personaBody for a built-in soul', () => {
     const result = resolveSkill({

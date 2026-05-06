@@ -2,10 +2,7 @@
 
 You have been called on issue **#{{target_id}}** in **{{repo}}**.
 
-## Tooling
-
-The container has `git`, `gh` (pre-authenticated as your App via `GH_TOKEN`),
-and the standard read/edit tools. Use `gh` for all GitHub mutations.
+{{common}}
 
 ## Goal
 
