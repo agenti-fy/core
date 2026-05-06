@@ -361,6 +361,36 @@ describe('applyHotReloadable', () => {
 });
 
 // ---------------------------------------------------------------------------
+// loadConfig CLAUDE_TIMEOUT_MS — empty-string normalisation
+// ---------------------------------------------------------------------------
+
+describe('loadConfig CLAUDE_TIMEOUT_MS', () => {
+  it('uses the schema default (900_000) when CLAUDE_TIMEOUT_MS is unset', () => {
+    const cfg = loadConfig(baseEnv());
+    expect(cfg.claudeTimeoutMs).toBe(15 * 60 * 1000);
+  });
+
+  it('uses the schema default (900_000) when CLAUDE_TIMEOUT_MS is ""', () => {
+    const cfg = loadConfig({ ...baseEnv(), CLAUDE_TIMEOUT_MS: '' });
+    expect(cfg.claudeTimeoutMs).toBe(15 * 60 * 1000);
+  });
+
+  it('parses "0" as 0 (timeouts-disabled path preserved)', () => {
+    const cfg = loadConfig({ ...baseEnv(), CLAUDE_TIMEOUT_MS: '0' });
+    expect(cfg.claudeTimeoutMs).toBe(0);
+  });
+
+  it('parses a valid numeric string as the corresponding number', () => {
+    const cfg = loadConfig({ ...baseEnv(), CLAUDE_TIMEOUT_MS: '60000' });
+    expect(cfg.claudeTimeoutMs).toBe(60_000);
+  });
+
+  it('throws a ZodError when CLAUDE_TIMEOUT_MS is a non-numeric string', () => {
+    expect(() => loadConfig({ ...baseEnv(), CLAUDE_TIMEOUT_MS: 'abc' })).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // LiveClaudeAdapter hot-reload — config mutation after construction
 // ---------------------------------------------------------------------------
 

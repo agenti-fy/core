@@ -152,7 +152,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     claudeMaxTurnsReview: env.CLAUDE_MAX_TURNS_REVIEW ?? env.CLAUDE_MAX_TURNS,
     claudeMaxTurnsAddressReview: env.CLAUDE_MAX_TURNS_ADDRESS_REVIEW ?? env.CLAUDE_MAX_TURNS,
     claudeMaxTurnsMerge: env.CLAUDE_MAX_TURNS_MERGE ?? env.CLAUDE_MAX_TURNS,
-    claudeTimeoutMs: env.CLAUDE_TIMEOUT_MS,
+    // compose's ${VAR-} expands to '' when VAR is unset; treat that as unset, not as 0=disabled
+    claudeTimeoutMs: env.CLAUDE_TIMEOUT_MS || undefined,
     githubAppId: env.GITHUB_APP_ID,
     githubAppPrivateKey: env.GITHUB_APP_PRIVATE_KEY,
     githubAppInstallationId: env.GITHUB_APP_INSTALLATION_ID,
