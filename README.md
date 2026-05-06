@@ -43,6 +43,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history.
   - [Anthropic API key](#anthropic-api-key)
   - [Coordinator env](#coordinator-env)
   - [Agent env](#agent-env)
+- [Tuning for token cost](#tuning-for-token-cost)
 - [SOUL.md format](#soulmd-format)
 - [Operating](#operating)
   - [TUI](#tui)
@@ -217,6 +218,7 @@ The agent's `LiveClaudeAdapter` calls the Claude Agent SDK. Set `ANTHROPIC_API_K
 | `STALE_JOB_SWEEP_S`            | `600`        | Stale-sweeper cadence                                          |
 | `FAILED_DISPATCH_RETENTION_DAYS` | `7`        | GC retention for `failed_to_dispatch` rows                     |
 | `COMPLETED_JOB_RETENTION_DAYS` | `30`         | GC retention for `complete`/`failed` rows                      |
+| `PR_MAX_REVIEW_CYCLES`         | `5`          | Max automated review ↔ address-review iterations per PR. Applies `needs-human` when exceeded. (#70) |
 | `DISABLE_GITHUB`               | `false`      | Skip the GitHub client entirely (tests/smoke runs)             |
 
 ### Agent env
@@ -250,7 +252,50 @@ The agent's `LiveClaudeAdapter` calls the Claude Agent SDK. Set `ANTHROPIC_API_K
 
 See [`packages/agent/README.md` — Turn budgets](packages/agent/README.md#turn-budgets) for the per-method defaults, override precedence, and rationale.
 
-## SOUL.md format
+## Tuning for token cost
+
+The main levers are turn budgets (#67), a per-job cost ceiling (#68), the PR-review cycle cap (#70), and model selection per method.
+
+### Cost-control knobs
+
+| Knob | Where set | Default | Effect |
+| ---- | --------- | ------- | ------ |
+| `CLAUDE_MAX_TURNS_PLAN` | agent env | `100` | Max SDK turns for the plan skill |
+| `CLAUDE_MAX_TURNS_IMPLEMENT` | agent env | `250` | Max SDK turns for implement |
+| `CLAUDE_MAX_TURNS_REVIEW` | agent env | `60` | Max SDK turns for review |
+| `CLAUDE_MAX_TURNS_ADDRESS_REVIEW` | agent env | `200` | Max SDK turns for address-review |
+| `CLAUDE_MAX_TURNS_MERGE` | agent env | `50` | Max SDK turns for merge |
+| `CLAUDE_COST_LIMIT_USD` | agent env | `5.0` | Abort and return `task_error` when cumulative SDK cost exceeds this. `0` disables. |
+| `PR_MAX_REVIEW_CYCLES` | coordinator env | `5` | After this many review ↔ address-review cycles on one PR the coordinator applies `needs-human` instead of dispatching another reviewer. |
+
+Turn budgets cap the number of SDK round-trips; the cost ceiling is a dollar backstop for runaway jobs that accumulate expensive model calls before the turn budget fires.
+
+### Model recommendations (`models.*` in SOUL.md)
+
+The built-in souls use this pattern:
+
+```yaml
+models:
+  plan: claude-opus-4-7          # high-stakes reasoning, file triage, child-issue decomposition
+  implement: claude-sonnet-4-6   # balanced cost/capability for most code changes
+  review: claude-opus-4-7        # correctness and security review benefits from the best model
+  address_review: claude-sonnet-4-6
+  merge: claude-haiku-4-5-20251001  # mechanical: check approvals, squash, push
+```
+
+Rough cost ratios (input tokens, as of 2026): Opus ~15×, Sonnet ~3×, Haiku ~0.25× relative to each other. For a repo with many small PRs you can move `review` to Sonnet without a noticeable quality drop; move `plan` to Sonnet only for simple repos where issues rarely require deep cross-file reasoning.
+
+### Prompt-cache TTL and low-traffic setups
+
+The Anthropic API caches prompt prefixes for **5 minutes**. Each agent's system prompt (preset + persona body + skill body) is stable across calls for the same method, so back-to-back jobs of the same type on the same agent hit the cache and pay only cache-read rates.
+
+In low-traffic setups where the same agent handles one job every few hours, every job is a cache miss. This does not break anything — it just means you won't see the cache-hit savings that high-traffic deployments enjoy. If cost is a concern at low throughput, prefer Sonnet or Haiku over Opus, and tighten `CLAUDE_MAX_TURNS_*` to realistic ceilings for your workload.
+
+### Session carve-out for `review` and `merge`
+
+`review` and `merge` never resume a prior Claude session and never persist a new one (#69). Each call reads fresh state and makes a point-in-time decision; carrying forward the conversation from a previous PR review wastes cache-read tokens on stale context. If you see no `PUT /sessions` call after a review or merge job, that is expected — it is not a missing-session bug.
+
+`plan`, `implement`, and `address_review` do persist sessions: accumulated context from earlier jobs in the same thread (plan → implement → address_review) improves output quality at the cost of a growing session.
 
 A SOUL.md is bind-mounted into each agent at `/etc/agentify/SOUL.md`. It has YAML frontmatter and a markdown body:
 
