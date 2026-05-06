@@ -389,6 +389,22 @@ If a referenced persona has **no registered agent at all**, the coordinator appl
 
 The Review skill outputs only the review verdict. **AddressReview** and **Merge** are distinct methods, picked by the coordinator from the task label the reviewer set:
 
+### 8.7 Plan auto-close
+
+After a plan job completes, the coordinator's `plan-completion-poller` loop takes over the parent issue's lifecycle:
+
+- **Trigger**: every `planCompletionPollSeconds` (default 60 s, configurable via `PLAN_COMPLETION_POLL_S`) the coordinator reads all `plans` rows where `completed_at IS NULL`.
+- **Per tick, for each open plan**:
+  1. Fetch the parent issue and each child issue's state from GitHub (child states are cached for the duration of the tick to avoid duplicate API calls).
+  2. Rewrite only the checklist lines in the parent body — lines matching `- [ ] #N` or `- [x] #N` for registered child IDs are flipped to `[x]` for closed children and `[ ]` for open ones. All other body content is preserved verbatim.
+  3. If the computed body differs from the stored one, `PATCH /issues/:parent_id` with the new body.
+  4. If every registered child is `closed`, the coordinator posts a signed closing comment (header: _"🎯 **The Orchestrator** · Project Manager — auto-closing tracking issue: all planned subtasks complete."_), then closes the parent with `state_reason: completed`, and marks the `plans` row complete (`completed_at` set).
+- **Edge cases**:
+  - **Re-plan**: if the orchestrator re-runs Plan on the same parent, `upsertPlan` overwrites `child_ids` and resets `completed_at` to NULL. The new child set becomes the gate for the next auto-close; old children not in the new set become orphans and no longer block completion.
+  - **Deleted child (404)**: treated as `closed` for completion purposes; a `warn` log is emitted so operators can investigate.
+  - **Parent already closed**: the poller calls `markPlanComplete` and moves on — no body edit, no comment, no attempt to re-close.
+  - **Per-plan isolation**: a failed GitHub call for one plan does not abort the scan; errors are caught per-plan so a single bad row cannot stall the rest.
+
 - `agent:<persona>:address-review` → POST `/address-review` (always: implement + push + re-request review)
 - `agent:<persona>:merge`          → POST `/merge` (always: ensure clean, merge, close linked issue)
 
@@ -467,7 +483,21 @@ CREATE TABLE control (
   value TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE plans (
+  repo TEXT NOT NULL,
+  parent_id INTEGER NOT NULL,
+  child_ids TEXT NOT NULL CHECK (json_valid(child_ids)),  -- JSON array of child issue numbers
+  recorded_at INTEGER NOT NULL,
+  completed_at INTEGER,             -- NULL = plan still open; non-NULL = parent auto-closed
+  last_checked_at INTEGER,          -- last tick timestamp, for diagnostics
+  PRIMARY KEY (repo, parent_id)
+);
+
+CREATE INDEX plans_open ON plans(completed_at) WHERE completed_at IS NULL;
 ```
+
+The `plans` table records every parent→children relationship produced by a successful plan-skill run. Each row is keyed on `(repo, parent_id)` and holds the authoritative child issue list (`child_ids` JSON array). A row is "open" while `completed_at IS NULL`; the `plan-completion-poller` drains it by setting `completed_at` once the parent auto-closes. Re-planning the same parent overwrites `child_ids` and resets `completed_at` to NULL so the new child set gates the next auto-close. The `last_checked_at` column is updated on every poll tick and can be used for per-plan back-off or operator diagnostics.
 
 ### 11.2 Agent local state
 
@@ -858,7 +888,7 @@ agenti-fy/
 5. **End-to-end** — first run against a sandbox GitHub repo with the full nine-agent team.
 6. **Observability** — Prometheus, pino logs, `/jobs/:id`, SSE log stream.
 7. **TUI** — `@agentify/tui` package: dashboard, agents, jobs, repos, logs screens; halt confirmation; non-TTY `agentify status` fallback.
-8. **Polish** — `/reset`, stale-job sweeper, halt label, docs.
+8. **Polish** — `/reset`, stale-job sweeper, halt label, plan auto-close loop, docs.
 
 ---
 
