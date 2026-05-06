@@ -19,6 +19,13 @@ import type { SoulRef } from '../soul/ref.js';
 import type { AgentMetrics } from '../metrics.js';
 import { modelForMethod, resolveSkill } from '../skills/resolver.js';
 
+/**
+ * Methods that form a productive thread — context from prior jobs genuinely
+ * helps. review/merge read fresh state and decide; carrying stale context
+ * from a previous PR review burns cache-read tokens without benefit.
+ */
+const SESSION_PERSISTENT_METHODS = new Set<Method>(['plan', 'implement', 'address_review']);
+
 export interface RunSkillRequest {
   job_id: string;
   method: Method;
@@ -183,7 +190,9 @@ export class SkillRunner {
       return;
     }
 
-    const sessionId = req.session_id;
+    // review and merge are stateless — don't resume a prior session even if
+    // the coordinator supplied one. The agent decides here; live.ts receives null.
+    const sessionId = SESSION_PERSISTENT_METHODS.has(req.method) ? req.session_id : null;
     const skill = resolveSkill({
       soul: this.deps.soulRef.current,
       method: req.method,
@@ -244,6 +253,7 @@ export class SkillRunner {
     await this.cleanupWorktree(req, log);
 
     const persistable =
+      SESSION_PERSISTENT_METHODS.has(req.method) &&
       (output.outcome === 'success' || output.outcome === 'task_error') &&
       output.sessionId !== null;
     if (persistable && output.sessionId) {
