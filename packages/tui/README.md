@@ -51,6 +51,7 @@ The root [`README.md`](../../README.md#tui) is the canonical keybinding referenc
 | --- | ------ |
 | `d` / `a` / `j` / `r` / `l` | Switch screen |
 | `h` | Halt / resume (modal confirmation) |
+| `↑↓` | Move cursor (Agents/Jobs screens) |
 | `R` | Reset selected agent (Agents screen) |
 | `1`–`5` | Set log min level (Logs screen) |
 | `PgUp` / `PgDn` | Scroll log history |
