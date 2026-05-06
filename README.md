@@ -156,6 +156,8 @@ Plus `custom` for fully bespoke souls (uses the soul's `name` to match against t
 
 The repo ships a SOUL.md per built-in at `souls/*.md`. The default `docker-compose.yml` runs **one container per built-in** — routing depends on a full lineup since different methods are handled by different personas (e.g. `orchestrator` plans, `tinkerer` implements, `skeptic` reviews). Removing a persona from the compose file means any `agent:<that-persona>` label gets `summary.no_agent` instead of progress.
 
+If a slimmed persona misses a concern it should have caught, see [`docs/persona-regression.md`](docs/persona-regression.md) for the diagnosis and rollback recipe.
+
 ### Halt and recovery
 
 Three ways to halt:
