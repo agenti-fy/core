@@ -143,6 +143,25 @@ export async function registerAgentRoutes(
           body: result.body,
         });
       }
+      if (result.statusCode === 0) {
+        // Transport failure (DNS / connection refused / timeout). The agent
+        // is registered in our store but its container isn't reachable —
+        // typically because docker compose stopped/removed it after the
+        // record was created. Mark FAILURE so the dispatcher won't try to
+        // route to a dead URL until the operator restarts the container
+        // (which re-registers and clears FAILURE). Without this, the agent
+        // sits IDLE in the store forever and dispatch keeps hitting ENOTFOUND.
+        deps.store.recordHeartbeat(a.agent_id, 'FAILURE');
+        deps.logger.warn(
+          { agent_id: a.agent_id, url: a.url, body: result.body },
+          'agent /reset unreachable — marked FAILURE',
+        );
+        return reply.code(503).send({
+          ok: false as const,
+          agent_status_code: 0,
+          body: result.body,
+        });
+      }
       if (!result.ok) {
         return reply.code(503).send({
           ok: false as const,

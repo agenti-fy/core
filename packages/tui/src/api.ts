@@ -68,6 +68,18 @@ export class CoordinatorApi {
       const job = json?.body?.current_job_id ?? '?';
       throw new Error(`agent is BUSY (job: ${job})`);
     }
+    // 503 with agent_status_code: 0 means transport failure (DNS / connection
+    // refused / timeout). The container is registered but unreachable — the
+    // actionable advice is "restart the container", not "retry /reset".
+    if (res.statusCode === 503) {
+      const json = (await res.body.json().catch(() => null)) as
+        | { agent_status_code?: number; body?: { message?: string } }
+        | null;
+      if (json?.agent_status_code === 0) {
+        const detail = json.body?.message ? ` — ${json.body.message}` : '';
+        throw new Error(`agent unreachable; restart its container${detail}`);
+      }
+    }
     const text = await res.body.text();
     throw new Error(`reset → ${res.statusCode}: ${text}`);
   }

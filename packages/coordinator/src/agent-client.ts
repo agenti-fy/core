@@ -152,13 +152,32 @@ export class AgentRpcClient {
     return { kind: 'done', result: JobResultSchema.parse(json.result) };
   }
 
+  /**
+   * POST /reset to an agent. Returns a structured result instead of throwing
+   * on transport failures (DNS, connection refused, timeout) — without this,
+   * a stopped/removed agent container surfaces in the TUI as a generic 500
+   * with `getaddrinfo ENOTFOUND <hostname>` and the operator has no clear
+   * action to take. `statusCode: 0` signals "never reached the agent"; the
+   * route handler maps it to a 503 with a clear "agent unreachable" message.
+   */
   async reset(agentUrl: string): Promise<{ ok: boolean; statusCode: number; body: unknown }> {
-    const res = await request(`${agentUrl}/reset`, {
-      method: 'POST',
-      headersTimeout: HTTP_TIMEOUT_MS,
-      bodyTimeout: HTTP_TIMEOUT_MS,
-    });
-    const body = (await res.body.json().catch(() => null));
-    return { ok: res.statusCode === 200, statusCode: res.statusCode, body };
+    try {
+      const res = await request(`${agentUrl}/reset`, {
+        method: 'POST',
+        headersTimeout: HTTP_TIMEOUT_MS,
+        bodyTimeout: HTTP_TIMEOUT_MS,
+      });
+      const body = (await res.body.json().catch(() => null));
+      return { ok: res.statusCode === 200, statusCode: res.statusCode, body };
+    } catch (err) {
+      return {
+        ok: false,
+        statusCode: 0,
+        body: {
+          error: 'unreachable',
+          message: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
   }
 }
