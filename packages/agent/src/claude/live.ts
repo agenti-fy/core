@@ -14,8 +14,12 @@ import type {
 
 export interface LiveClaudeAdapterOptions {
   logger: Logger;
-  /** Hard cap on Claude turns per skill run. */
-  maxTurns: number;
+  /**
+   * Called inside `run()` to get the hard turn cap for the current method.
+   * Reading at call time (not construction) lets a /reset that reloads config
+   * pick up new values without restarting the process.
+   */
+  maxTurnsForMethod: (method: Method) => number;
   /** Hard cap on overall wall-clock duration per skill run, in ms. 0 disables. */
   timeoutMs: number;
   /** Permission mode for tool calls. Defaults to bypassPermissions for headless ops. */
@@ -47,13 +51,13 @@ const TOOLS_BY_METHOD: Record<Method, { allowed?: string[]; disallowed?: string[
  */
 export class LiveClaudeAdapter implements ClaudeAdapter {
   private readonly logger: Logger;
-  private readonly maxTurns: number;
+  private readonly maxTurnsForMethod: (method: Method) => number;
   private readonly timeoutMs: number;
   private readonly permissionMode: NonNullable<LiveClaudeAdapterOptions['permissionMode']>;
 
   constructor(opts: LiveClaudeAdapterOptions) {
     this.logger = opts.logger;
-    this.maxTurns = opts.maxTurns;
+    this.maxTurnsForMethod = opts.maxTurnsForMethod;
     this.timeoutMs = opts.timeoutMs;
     this.permissionMode = opts.permissionMode ?? 'bypassPermissions';
   }
@@ -110,7 +114,7 @@ export class LiveClaudeAdapter implements ClaudeAdapter {
         systemPrompt: opts.personaBody
           ? { type: 'preset', preset: 'claude_code', append: opts.personaBody }
           : { type: 'preset', preset: 'claude_code' },
-        maxTurns: this.maxTurns,
+        maxTurns: this.maxTurnsForMethod(opts.method),
         permissionMode: this.permissionMode,
         abortController: ac,
       };

@@ -233,12 +233,19 @@ The agent's `LiveClaudeAdapter` calls the Claude Agent SDK. Set `ANTHROPIC_API_K
 | `HEARTBEAT_INTERVAL_MS`        | `15000`                 |                                                          |
 | `COORDINATOR_TIMEOUT_MS`       | `15000`                 |                                                          |
 | `JOB_HISTORY_CAPACITY`         | `500`                   | LRU cap on the in-memory `state.jobs` Map                |
-| `CLAUDE_MAX_TURNS`             | `60`                    |                                                          |
+| `CLAUDE_MAX_TURNS`             | `500`                   | Fallback turn cap for any method whose per-method var is unset |
+| `CLAUDE_MAX_TURNS_PLAN`        | `100`                   | Turn cap for the plan skill                              |
+| `CLAUDE_MAX_TURNS_IMPLEMENT`   | `250`                   | Turn cap for the implement skill                         |
+| `CLAUDE_MAX_TURNS_REVIEW`      | `60`                    | Turn cap for the review skill                            |
+| `CLAUDE_MAX_TURNS_ADDRESS_REVIEW` | `200`               | Turn cap for the address-review skill                    |
+| `CLAUDE_MAX_TURNS_MERGE`       | `50`                    | Turn cap for the merge skill                             |
 | `CLAUDE_TIMEOUT_MS`            | `900000` (15 min)       | Per-skill wall-clock cap. `0` disables.                  |
 | `CLAUDE_ADAPTER`               | `auto`                  | `auto`, `live`, or `stub`                                |
 | `ANTHROPIC_API_KEY`            | —                       | Required for the live adapter                            |
 | `GITHUB_APP_*` / `GITHUB_USER` | —                       | Same as coordinator. Not needed if `DISABLE_GITHUB=true` |
 | `DISABLE_GITHUB`               | `false`                 | Mock all GitHub mutations (logs only)                    |
+
+See [`packages/agent/README.md` — Turn budgets](packages/agent/README.md#turn-budgets) for the per-method defaults, override precedence, and rationale.
 
 ## SOUL.md format
 
