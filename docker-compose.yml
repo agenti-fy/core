@@ -17,8 +17,15 @@ x-agent-env: &agent-env
   # appear under that persona's bot identity (e.g. agenti-fy-tinkerer[bot]).
   # The coordinator uses the global GITHUB_APP_* values for read-only polling.
 
-  # Anthropic.
-  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  # Anthropic. Pick ONE auth path:
+  #   - CLAUDE_CODE_OAUTH_TOKEN — long-lived (~1y) OAuth token from
+  #     `claude setup-token` on a host with the Max subscription. Preferred
+  #     for headless fleets: no per-hour refresh, no Keychain dependency.
+  #   - ANTHROPIC_API_KEY — classic sk-ant-* API key. Bills against API credits.
+  # The Agent SDK reads ANTHROPIC_API_KEY first, so leave it unset when using
+  # the OAuth path. Whichever you set, put it in .env.
+  CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY-}
   CLAUDE_ADAPTER: ${CLAUDE_ADAPTER:-auto}
   CLAUDE_MAX_TURNS: ${CLAUDE_MAX_TURNS:-60}
   CLAUDE_TIMEOUT_MS: ${CLAUDE_TIMEOUT_MS:-900000}

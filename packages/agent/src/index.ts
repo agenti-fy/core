@@ -17,19 +17,23 @@ import { WorktreeManager } from './git/worktree.js';
 import { AgentMetrics } from './metrics.js';
 
 function pickClaudeAdapter(config: Config, logger: Logger): ClaudeAdapter {
+  const hasCredential = Boolean(config.anthropicApiKey || config.claudeCodeOAuthToken);
   const choice =
     config.claudeAdapter === 'auto'
-      ? config.anthropicApiKey
+      ? hasCredential
         ? 'live'
         : 'stub'
       : config.claudeAdapter;
   if (choice === 'live') {
-    if (!config.anthropicApiKey) {
+    if (!hasCredential) {
       logger.warn(
-        'CLAUDE_ADAPTER=live but ANTHROPIC_API_KEY not set — SDK calls will likely 401',
+        'CLAUDE_ADAPTER=live but neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set — SDK calls will likely 401',
       );
     }
-    logger.info('using LiveClaudeAdapter (@anthropic-ai/claude-agent-sdk)');
+    logger.info(
+      { auth: config.anthropicApiKey ? 'api_key' : 'oauth_token' },
+      'using LiveClaudeAdapter (@anthropic-ai/claude-agent-sdk)',
+    );
     return new LiveClaudeAdapter({
       logger,
       maxTurns: config.claudeMaxTurns,

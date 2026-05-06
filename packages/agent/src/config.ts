@@ -51,14 +51,22 @@ const ConfigSchema = z.object({
   anthropicApiKey: z.string().min(1).optional(),
 
   /**
+   * Long-lived OAuth token from `claude setup-token` on a Max-subscribed
+   * host. Alternative to ANTHROPIC_API_KEY for headless fleets. The Agent
+   * SDK picks it up from process.env directly; we only track it here so the
+   * `auto` adapter selection knows to go Live when only this is set.
+   */
+  claudeCodeOAuthToken: z.string().min(1).optional(),
+
+  /**
    * Disable real GitHub side effects (label flips, comments). The runner logs
    * what it would have done. Useful for tests and the StubClaudeAdapter path.
    */
   disableGithub: boolFlag(false),
 
   /**
-   * Force the Claude adapter selection. `auto` picks Live when
-   * ANTHROPIC_API_KEY is set, otherwise Stub.
+   * Force the Claude adapter selection. `auto` picks Live when EITHER
+   * ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is set, otherwise Stub.
    */
   claudeAdapter: z.enum(['auto', 'live', 'stub']).default('auto'),
 }).superRefine((cfg, ctx) => {
@@ -101,7 +109,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     githubAppPrivateKey: env.GITHUB_APP_PRIVATE_KEY,
     githubAppInstallationId: env.GITHUB_APP_INSTALLATION_ID,
     githubUser: env.GITHUB_USER,
-    anthropicApiKey: env.ANTHROPIC_API_KEY,
+    // Coerce empty string → undefined so that `${VAR-}` from compose (which
+    // expands to "" when VAR is unset) doesn't trip the `.min(1)` schema.
+    // .optional() in zod only excuses undefined, not "".
+    anthropicApiKey: env.ANTHROPIC_API_KEY || undefined,
+    claudeCodeOAuthToken: env.CLAUDE_CODE_OAUTH_TOKEN || undefined,
     disableGithub: env.DISABLE_GITHUB,
     claudeAdapter: env.CLAUDE_ADAPTER,
   });
