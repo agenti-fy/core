@@ -37,6 +37,7 @@ const FILE_FOR_METHOD: Record<Method, string> = {
 
 const defaultCache: Partial<Record<Method, string>> = {};
 const personaBodyCache = new Map<string, string>();
+let commonCache: string | undefined;
 
 function loadDefaultSkill(method: Method): string {
   const cached = defaultCache[method];
@@ -45,6 +46,13 @@ function loadDefaultSkill(method: Method): string {
   const text = readFileSync(path, 'utf8');
   defaultCache[method] = text;
   return text;
+}
+
+function loadCommon(): string {
+  if (commonCache !== undefined) return commonCache;
+  const path = join(__dirname, 'defaults', '_common.md');
+  commonCache = readFileSync(path, 'utf8').trimEnd();
+  return commonCache;
 }
 
 export interface ResolvedSkill {
@@ -112,6 +120,7 @@ export function resolveSkill(opts: ResolveOptions): ResolvedSkill {
     agent_name: opts.soul.frontmatter.name,
     persona: opts.personaName,
     signature: signatureFor(opts.soul),
+    common: loadCommon(),
   });
 
   const systemPrompt =

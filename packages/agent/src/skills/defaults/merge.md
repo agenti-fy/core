@@ -2,9 +2,7 @@
 
 You have been called on PR **#{{target_id}}** in **{{repo}}**.
 
-## Tooling
-
-`git`, `gh` pre-authenticated as your App.
+{{common}}
 
 ## Goal
 

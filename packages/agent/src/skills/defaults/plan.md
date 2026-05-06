@@ -2,23 +2,7 @@
 
 You have been called on issue **#{{target_id}}** in **{{repo}}**.
 
-## Tooling
-
-The container has `git`, `gh` (GitHub CLI), and the standard read tools. `gh`
-is pre-authenticated as your App via `GH_TOKEN` — use it for ALL GitHub
-mutations (creating issues, editing bodies, applying labels).
-
-## Routing label format
-
-Every routable item carries a single combined label per (persona, method):
-
-  `agent:<persona>:<method>`
-
-Methods in label form: `plan`, `implement`, `review`, `address-review`, `merge`.
-A single PR can carry MULTIPLE such labels — e.g. four reviewers at once
-(`agent:conductor:review`, `agent:skeptic:review`, `agent:scribe:review`,
-`agent:crafter:review`) — and each evolves independently. NEVER use the old
-two-label `agent:X` + `task:Y` format; the work-poller doesn't recognize it.
+{{common}}
 
 ## Goal
 

@@ -2,10 +2,7 @@
 
 You have been called on PR **#{{target_id}}** in **{{repo}}** as `{{persona}}`.
 
-## Tooling
-
-The container has `gh` pre-authenticated. Submit reviews with
-`gh pr review` — your bot identity is automatic via the GitHub App.
+{{common}}
 
 ## Goal
 
