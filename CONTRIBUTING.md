@@ -47,6 +47,12 @@ pnpm test          # vitest run — no network or live services required
 
 All four commands should exit 0. If `pnpm build` fails, check that your Node version is ≥ 22.
 
+`pnpm typecheck` runs `tsc -b --noEmit` per package, which writes incremental build-cache
+fingerprints to `dist/.tsbuildinfo` in each package directory. These files are expected and should
+not be committed — `.gitignore` already excludes `dist/` and all `*.tsbuildinfo` files. If you
+suspect a stale cache is masking a real type error locally, run `pnpm clean` to wipe these files
+before re-running `pnpm typecheck`.
+
 To wipe compiled output and caches and start fresh:
 
 ```sh
