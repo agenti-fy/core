@@ -9,7 +9,7 @@ function makeSoul(overrides: Partial<ParsedSoul> = {}): ParsedSoul {
       type: 'tinkerer',
       version: '1.0.0',
     },
-    personaBody: 'You are the tinkerer.',
+    personaBody: 'You are The Tinkerer.',
     skillOverrides: {},
     ...overrides,
   };
@@ -168,7 +168,7 @@ describe('resolveSkill — positive control with skill override', () => {
     const soul = makeSoul({ skillOverrides: { implement: 'Custom implement body {{persona}}.' } });
     const result = resolveSkill({ ...BASE_OPTS, soul, personaName: 'tinkerer' });
     expect(result.source).toBe('soul');
-    expect(result.skillPrompt).toBe('Custom implement body tinkerer.');
+    expect(result.skillPrompt).toContain('Custom implement body');
   });
 });
 
@@ -192,7 +192,7 @@ describe('resolveSkill — {{common}} interpolation', () => {
   it('leaves {{common}} unexpanded when it appears nowhere in the template', () => {
     const soul = makeSoul({ skillOverrides: { implement: 'No tokens here.' } });
     const result = resolveSkill({ ...BASE_OPTS, soul, personaName: 'tinkerer' });
-    expect(result.skillPrompt).toBe('No tokens here.');
+    expect(result.skillPrompt).toContain('No tokens here.');
   });
 });
 
@@ -227,7 +227,7 @@ describe('resolveSkill — security preamble', () => {
       target_id: 42,
       personaName: 'tinkerer',
     });
-    expect(result.systemPrompt).toContain(SECURITY_PREAMBLE.trim());
+    expect(result.systemPrompt.stable).toContain(SECURITY_PREAMBLE.trim());
   });
 
   it('retains the original persona prose after the preamble', () => {
@@ -240,5 +240,125 @@ describe('resolveSkill — security preamble', () => {
       personaName: 'tinkerer',
     });
     expect(result.personaBody).toContain(soul.personaBody);
+  });
+});
+
+describe('resolveSkill — stable/volatile split', () => {
+  it('stable section is byte-identical for different (repo, target_id) with same soul+method', () => {
+    const soul = makeSoul();
+    const a = resolveSkill({
+      soul,
+      method: 'implement',
+      repo: 'acme/api',
+      target_id: 1,
+      personaName: 'tinkerer',
+    });
+    const b = resolveSkill({
+      soul,
+      method: 'implement',
+      repo: 'other-org/other-repo',
+      target_id: 9999,
+      personaName: 'tinkerer',
+    });
+    expect(a.systemPrompt.stable).toBe(b.systemPrompt.stable);
+  });
+
+  it('volatile section contains per-job tokens', () => {
+    const soul = makeSoul();
+    const result = resolveSkill({
+      soul,
+      method: 'implement',
+      repo: 'acme/api',
+      target_id: 42,
+      personaName: 'tinkerer',
+    });
+    expect(result.systemPrompt.volatile).toContain('acme/api');
+    expect(result.systemPrompt.volatile).toContain('42');
+    expect(result.systemPrompt.volatile).toContain('tinkerer');
+  });
+
+  it('stable section does not contain per-job repo or target_id', () => {
+    const soul = makeSoul();
+    const result = resolveSkill({
+      soul,
+      method: 'implement',
+      repo: 'unique-repo-xyz-12345',
+      target_id: 99887,
+      personaName: 'tinkerer',
+    });
+    expect(result.systemPrompt.stable).not.toContain('unique-repo-xyz-12345');
+    expect(result.systemPrompt.stable).not.toContain('99887');
+  });
+
+  it('volatile section is appended to skillPrompt', () => {
+    const soul = makeSoul();
+    const result = resolveSkill({
+      soul,
+      method: 'implement',
+      repo: 'acme/api',
+      target_id: 42,
+      personaName: 'tinkerer',
+    });
+    expect(result.skillPrompt).toContain(result.systemPrompt.volatile);
+  });
+
+  it('volatile section is ≤8 lines', () => {
+    const soul = makeSoul();
+    const result = resolveSkill({
+      soul,
+      method: 'plan',
+      repo: 'acme/api',
+      target_id: 1,
+      personaName: 'tinkerer',
+    });
+    const lines = result.systemPrompt.volatile.split('\n').length;
+    expect(lines).toBeLessThanOrEqual(8);
+  });
+
+  it('custom soul override still gets volatile trailer appended to skillPrompt', () => {
+    const soul = makeSoul();
+    soul.skillOverrides['implement'] = 'Do the implementation. Sign with {{signature}}.';
+    const result = resolveSkill({
+      soul,
+      method: 'implement',
+      repo: 'acme/api',
+      target_id: 42,
+      personaName: 'tinkerer',
+    });
+    expect(result.source).toBe('soul');
+    expect(result.skillPrompt).toContain(result.systemPrompt.volatile);
+    expect(result.systemPrompt.volatile).toContain('42');
+  });
+
+  it('stable section for custom soul override excludes per-job tokens', () => {
+    const soul = makeSoul();
+    soul.skillOverrides['implement'] = 'Do it for {{repo}} issue {{target_id}}.';
+    const a = resolveSkill({
+      soul,
+      method: 'implement',
+      repo: 'acme/api',
+      target_id: 1,
+      personaName: 'tinkerer',
+    });
+    const b = resolveSkill({
+      soul,
+      method: 'implement',
+      repo: 'different-org/different-repo',
+      target_id: 5555,
+      personaName: 'tinkerer',
+    });
+    expect(a.systemPrompt.stable).toBe(b.systemPrompt.stable);
+  });
+
+  it('personaBody is included in stable section', () => {
+    const soul = makeSoul();
+    const result = resolveSkill({
+      soul,
+      method: 'implement',
+      repo: 'acme/api',
+      target_id: 1,
+      personaName: 'tinkerer',
+    });
+    expect(result.systemPrompt.stable).toContain(result.personaBody);
   });
 });

@@ -16,10 +16,11 @@ export interface SkillRunOptions {
    */
   skillPrompt: string;
   /**
-   * Convenience: persona + skill concatenated, for adapters that don't
-   * separate roles (e.g. the stub).
+   * Split prompt for prompt-cache consumers.
+   * `stable`: persona + skill template with only signature substituted (cacheable).
+   * `volatile`: trailing Task vars block with per-job tokens.
    */
-  systemPrompt: string;
+  systemPrompt: { stable: string; volatile: string };
   /** Model identifier (SOUL frontmatter), or undefined to use SDK default. */
   model: string | undefined;
   /** Existing session id from the coordinator; null = start fresh. */

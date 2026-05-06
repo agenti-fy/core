@@ -287,7 +287,7 @@ diff, and never invent abstractions that aren't earned.
 You implement against the simplest interpretation of the issue …
 ```
 
-The persona body is sent as the SDK's `systemPrompt` (appended to the bundled `claude_code` preset). Skill bodies are sent as the user message and may use template tokens: `{{repo}}`, `{{target_id}}`, `{{agent_name}}`, `{{persona}}`, `{{signature}}`.
+The persona body is sent as the SDK's `systemPrompt` (appended to the bundled `claude_code` preset). Skill bodies are sent as the user message with `{{signature}}` substituted directly into the template. The four per-job tokens (`{{repo}}`, `{{target_id}}`, `{{agent_name}}`, `{{persona}}`) are not substituted into the body; their values are appended as a trailing **Task vars** block that the model reads at dispatch time. See [docs/skills.md](docs/skills.md) for the full token reference.
 
 You can hot-reload a soul by editing the mounted file and `POST /agents/<id>/reset` (the agent re-parses, re-registers, clears any FAILURE).
 
