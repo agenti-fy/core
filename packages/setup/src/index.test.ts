@@ -44,7 +44,7 @@ function makeIo(): IoStreams & { output: () => string } {
 
 /** A minimal WizardState that satisfies the schema. */
 const MINIMAL_STATE: WizardState = {
-  version: 1,
+  version: 2,
   prefix: 'test-prefix',
   repo: { owner: 'alice', name: 'repo' },
   ownerType: 'personal',

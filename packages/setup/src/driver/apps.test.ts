@@ -25,7 +25,7 @@ const PERSONA_COUNT = PERSONAS.length; // 9
 /** Build a minimal WizardState with no personas completed. */
 function makeState(overrides: Partial<WizardState> = {}): WizardState {
   return {
-    version: 1,
+    version: 2,
     prefix: 'test-prefix',
     repo: { owner: 'alice', name: 'sandbox' },
     ownerType: 'personal',

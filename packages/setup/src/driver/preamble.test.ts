@@ -335,7 +335,7 @@ describe('runPreamble — state-based confirmation', () => {
   /** Minimal WizardState-like object for testing; cast to satisfy types. */
   function fakeState(overrides?: Record<string, unknown>) {
     return {
-      version: 1 as const,
+      version: 2 as const,
       prefix: 'saved-prefix',
       repo: { owner: 'alice', name: 'repo', ownerId: 42 },
       ownerType: 'personal' as const,
