@@ -515,7 +515,7 @@ describe('default skill prompts — kb_clone_dir stable-template contract', () =
   // Standalone {{kb_clone_dir}} NOT followed by '/' is also allowed (guard / presence-check pattern).
   // Any other suffix — e.g. {{kb_clone_dir}}/wiki — embeds a per-job path into the stable
   // template section, collapsing the prompt-cache hit rate to ~0.
-  // See SPEC.md §23.8 ("Stable-template contract") for the rule rationale.
+  // See SPEC.md §23.8 ("Skill integration") for the stable-template composition constraint.
   const VIOLATION_RE = /\{\{kb_clone_dir\}\}\/(?!\{\{kb_(global|persona)_page\}\})/g;
 
   it.each(mdFiles)(
@@ -528,7 +528,7 @@ describe('default skill prompts — kb_clone_dir stable-template contract', () =
         `Offending substrings: ${matches.map((m) => JSON.stringify(m[0])).join(', ')}\n` +
         `Allowed compositions: {{kb_clone_dir}}/{{kb_global_page}} or {{kb_clone_dir}}/{{kb_persona_page}}.\n` +
         `Standalone {{kb_clone_dir}} (not followed by /) is also allowed (guard/presence-check pattern).\n` +
-        `See SPEC.md §23.8 ("Stable-template contract") for the rule rationale.`;
+        `See SPEC.md §23.8 ("Skill integration") for the stable-template composition constraint.`;
       expect(matches, failureMessage).toHaveLength(0);
     },
   );

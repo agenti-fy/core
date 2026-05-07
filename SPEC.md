@@ -1188,6 +1188,16 @@ Any other usage embeds a per-job filesystem path inside cache-stable prose, defe
 
 See `packages/agent/src/skills/resolver.ts` lines 146-152 for the architectural decision recorded inline.
 
+**Stable-template composition constraint.** `{{kb_clone_dir}}` is interpolated into the **stable** half of `resolveSkill`'s output (the prompt-cache prefix). To keep the stable section identical across jobs and preserve cache hit rates, only the following uses of `{{kb_clone_dir}}` are permitted in skill prompt templates:
+
+| Allowed form | Purpose |
+|---|---|
+| `{{kb_clone_dir}}/{{kb_global_page}}` | Full path to the global KB page |
+| `{{kb_clone_dir}}/{{kb_persona_page}}` | Full path to the persona KB page |
+| `{{kb_clone_dir}}` (not followed by `/`) | Presence-check / guard expression |
+
+Any other suffix — e.g. `{{kb_clone_dir}}/wiki` — embeds an absolute per-job path into the stable section, collapsing the prompt-cache hit rate to ~0. The `resolver.test.ts` suite enforces this rule on all bundled `defaults/*.md` files.
+
 See `packages/agent/src/skills/defaults/_common.md` for the shared KB read/write convention taught to all skills.
 
 ### 23.9 Operator runbook
