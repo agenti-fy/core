@@ -25,7 +25,7 @@ jobs:
     # to skip re-checking changed files and silently pass a broken typecheck.
     # Any future cache step that covers dist/ must key on hashFiles('**/tsconfig*.json','pnpm-lock.yaml').
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Setup pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
@@ -33,7 +33,7 @@ jobs:
           version: 10.20.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
