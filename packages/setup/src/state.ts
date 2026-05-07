@@ -19,6 +19,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { z } from 'zod';
 import { BUILTIN_PERSONAS } from '@agentify/shared';
+import { EncryptedValueSchema } from './crypto.js';
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -57,14 +58,14 @@ export const PersonaCredsSchema = z.object({
   name: z.string().min(1),
   /** App HTML URL (e.g. "https://github.com/apps/my-app") */
   htmlUrl: z.string().min(1),
-  /** PEM-encoded private key with real (not escaped) newlines */
-  pem: z.string().min(1),
+  /** PEM-encoded private key with real (not escaped) newlines, or encrypted form on disk */
+  pem: z.union([z.string().min(1), EncryptedValueSchema]),
   /** OAuth client ID */
   clientId: z.string().min(1),
-  /** OAuth client secret */
-  clientSecret: z.string().min(1),
-  /** Webhook secret from the manifest exchange, or null if absent */
-  webhookSecret: z.string().nullable(),
+  /** OAuth client secret, or encrypted form on disk */
+  clientSecret: z.union([z.string().min(1), EncryptedValueSchema]),
+  /** Webhook secret from the manifest exchange, or null if absent, or encrypted form on disk */
+  webhookSecret: z.union([z.string(), EncryptedValueSchema]).nullable(),
   /** Numeric installation ID on the target repo */
   installationId: z.number().int().positive(),
   /** GitHub bot user login (e.g. "my-prefix-orchestrator[bot]") */
@@ -103,12 +104,15 @@ const PersonasSchema = z.object(
  * Top-level wizard state schema.
  *
  * `version` is the forward-compatibility hook: bump it whenever the shape
- * changes and add a migration branch in `loadState`.  For v1 there is no
- * migration code — the field is just recorded.
+ * changes and add a migration branch in `loadState`.  V1 files (plaintext PEMs)
+ * are migrated on load — see the v1→v2 migration subtask for that logic.
  */
 export const WizardStateSchema = z.object({
-  /** Schema version — always 1 for files written by this module. */
-  version: z.literal(1),
+  /**
+   * Schema version — always 2 for files written by this module.
+   * V1 files are migrated on load (forward-reference: see migration subtask).
+   */
+  version: z.literal(2),
   /** Operator-supplied prefix used to name Apps (e.g. "agentify-alice"). */
   prefix: z.string().min(1),
   /**

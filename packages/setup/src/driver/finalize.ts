@@ -120,10 +120,14 @@ export class IncompleteStateError extends Error {
 function credsToAppCredentials(
   creds: PersonaCreds,
 ): WizardConfig['coordinator'] {
+  // At runtime, pem has been decrypted to a string before the finalize phase
+  // runs (the decryptStateOnLoad helper is wired in a sibling subtask).
+  // The union type `string | EncryptedValue` is the on-disk schema; by this
+  // point in the orchestrator it is always a plaintext string.
   return {
     appId: String(creds.appId),
     installationId: String(creds.installationId),
-    privateKey: creds.pem,
+    privateKey: creds.pem as string,
     githubUser: creds.githubUser,
   };
 }

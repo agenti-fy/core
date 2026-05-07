@@ -55,7 +55,7 @@ function makeIo(lines: string[]): IoStreams & { output: () => string } {
 /** Build a minimal WizardState for the anthropic phase. */
 function makeState(overrides: Partial<WizardState> = {}): WizardState {
   return {
-    version: 1,
+    version: 2,
     prefix: 'test-prefix',
     repo: { owner: 'alice', name: 'sandbox' },
     ownerType: 'personal',

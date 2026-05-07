@@ -11,6 +11,7 @@ import {
   type WizardState,
   type PersonaCreds,
 } from './state.js';
+import { type EncryptedValue } from './crypto.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ const SAMPLE_CREDS: PersonaCreds = {
 };
 
 const MINIMAL_STATE: WizardState = {
-  version: 1,
+  version: 2,
   prefix: 'my-prefix',
   repo: { owner: 'alice', name: 'sandbox' },
   ownerType: 'personal',
@@ -39,7 +40,7 @@ const MINIMAL_STATE: WizardState = {
 };
 
 const FULL_STATE: WizardState = {
-  version: 1,
+  version: 2,
   prefix: 'my-prefix',
   repo: {
     owner: 'alice',
@@ -76,8 +77,8 @@ describe('WizardStateSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects state with wrong version', () => {
-    const result = WizardStateSchema.safeParse({ ...MINIMAL_STATE, version: 2 });
+  it('rejects state with version: 1', () => {
+    const result = WizardStateSchema.safeParse({ ...MINIMAL_STATE, version: 1 });
     expect(result.success).toBe(false);
   });
 
@@ -112,6 +113,77 @@ describe('PersonaCredsSchema', () => {
 
   it('rejects a negative appId', () => {
     const result = PersonaCredsSchema.safeParse({ ...SAMPLE_CREDS, appId: -1 });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ── EncryptedValue union — pem / clientSecret / webhookSecret ─────────────────
+
+/** A minimal valid EncryptedValue fixture (shape only; not real ciphertext). */
+const SAMPLE_ENCRYPTED: EncryptedValue = {
+  version: 2,
+  iv: Buffer.alloc(12).toString('base64'),
+  salt: Buffer.alloc(32).toString('base64'),
+  tag: Buffer.alloc(16).toString('base64'),
+  ciphertext: Buffer.from('opaque').toString('base64'),
+};
+
+describe('PersonaCredsSchema — EncryptedValue unions', () => {
+  it('accepts pem as a plaintext string', () => {
+    // SAMPLE_CREDS already has a plaintext pem; verify the union accepts it.
+    const result = PersonaCredsSchema.safeParse(SAMPLE_CREDS);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts pem as an EncryptedValue', () => {
+    const result = PersonaCredsSchema.safeParse({
+      ...SAMPLE_CREDS,
+      pem: SAMPLE_ENCRYPTED,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts clientSecret as an EncryptedValue', () => {
+    const result = PersonaCredsSchema.safeParse({
+      ...SAMPLE_CREDS,
+      clientSecret: SAMPLE_ENCRYPTED,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts webhookSecret as an EncryptedValue', () => {
+    const result = PersonaCredsSchema.safeParse({
+      ...SAMPLE_CREDS,
+      webhookSecret: SAMPLE_ENCRYPTED,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts clientSecret and webhookSecret both as EncryptedValue', () => {
+    const result = PersonaCredsSchema.safeParse({
+      ...SAMPLE_CREDS,
+      clientSecret: SAMPLE_ENCRYPTED,
+      webhookSecret: SAMPLE_ENCRYPTED,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts webhookSecret as null even when other secrets are EncryptedValue', () => {
+    const result = PersonaCredsSchema.safeParse({
+      ...SAMPLE_CREDS,
+      pem: SAMPLE_ENCRYPTED,
+      clientSecret: SAMPLE_ENCRYPTED,
+      webhookSecret: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects EncryptedValue with version other than 2', () => {
+    const badEncrypted = { ...SAMPLE_ENCRYPTED, version: 1 };
+    const result = PersonaCredsSchema.safeParse({
+      ...SAMPLE_CREDS,
+      pem: badEncrypted,
+    });
     expect(result.success).toBe(false);
   });
 });

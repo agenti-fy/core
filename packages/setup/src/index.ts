@@ -115,7 +115,7 @@ function buildInitialState(
   ownerType: WizardState['ownerType'],
 ): WizardState {
   return {
-    version: 1,
+    version: 2,
     prefix,
     repo,
     ownerType,

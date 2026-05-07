@@ -92,7 +92,7 @@ function makeFullState(overrides: Partial<WizardState> = {}): WizardState {
   const coordinatorCreds = fakePersonaCreds('coordinator', 0);
 
   return {
-    version: 1,
+    version: 2,
     prefix: 'test-prefix',
     repo: { owner: 'alice', name: 'sandbox' },
     ownerType: 'personal',
@@ -107,7 +107,7 @@ function makeFullState(overrides: Partial<WizardState> = {}): WizardState {
 /** Build a partial WizardState (no apps created, no anthropic). */
 function makeIncompleteState(): WizardState {
   return {
-    version: 1,
+    version: 2,
     prefix: 'test-prefix',
     repo: { owner: 'alice', name: 'sandbox' },
     ownerType: 'personal',
