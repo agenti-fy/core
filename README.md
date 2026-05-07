@@ -412,6 +412,10 @@ Prometheus metrics are at `/metrics` on each service:
 - Coordinator: `agentify_jobs_total{method,outcome}`, `agentify_dispatched_total{method,kind}`, `agentify_dispatch_latency_ms`, plus `agentify_coordinator_*` defaults.
 - Agent: `agentify_jobs_total{method,outcome}`, `agentify_job_duration_ms`, `agentify_claude_tokens_total{kind}`, `agentify_claude_cost_usd_total{method}`, plus `agentify_agent_*` defaults. Default labels carry `persona`.
 
+### Knowledge base
+
+Agents consult and contribute to a per-repo wiki-backed knowledge base on every skill run. See [`docs/knowledge-base.md`](docs/knowledge-base.md) for the operator runbook: enabling/disabling, page layout, pruning, and troubleshooting. For a full operations playbook (halt, stuck jobs, failure recovery) see [`docs/operations.md`](docs/operations.md).
+
 ## Development
 
 ```sh
