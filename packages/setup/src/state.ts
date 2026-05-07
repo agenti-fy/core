@@ -395,7 +395,7 @@ export async function loadState(
     // Print a one-time operator notice (suppressed when io is not supplied).
     if (opts?.io) {
       printOk(
-        'Migrated state file from v1 to v2 (PEMs now encrypted at rest).',
+        'Migrated state file from v1 to v2 (secrets now encrypted at rest).',
         opts.io,
       );
     }
