@@ -75,9 +75,11 @@ const ConfigSchema = z.object({
    * the row valid JSON for downstream consumers. Defaults to 256 KiB.
    *
    * Note: `.length` returns UTF-16 code units, not UTF-8 bytes. For non-ASCII
-   * payloads the actual on-disk byte count can exceed this value by up to ~4×, but
-   * the cap remains a sound hard bound within a small constant factor for real-world
-   * payloads (sufficient for the adversarial-blob threat model).
+   * payloads the actual on-disk byte count can exceed this value by up to 3× (BMP
+   * non-ASCII codepoints encode to 3 UTF-8 bytes per UTF-16 code unit; astral pairs
+   * are 4 UTF-8 bytes per 2 UTF-16 code units, i.e. 2×). The cap remains a sound
+   * hard bound within a small constant factor for real-world payloads (sufficient
+   * for the adversarial-blob threat model).
    */
   maxResultJsonBytes: z.coerce.number().int().positive().default(256 * 1024),
 
