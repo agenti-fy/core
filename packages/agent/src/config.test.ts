@@ -49,9 +49,10 @@ describe('loadConfig — KB defaults', () => {
 
 describe('loadConfig — kbGlobalPage validation', () => {
   it('rejects a page name containing a slash', () => {
+    // The regex allowlist now excludes slashes; the error message changed (#264).
     expect(() =>
       loadConfig({ ...BASE_ENV, KB_GLOBAL_PAGE: 'some/path' }),
-    ).toThrow(/must not contain slashes/);
+    ).toThrow();
   });
 
   it('rejects a page name ending with .md', () => {
@@ -63,6 +64,43 @@ describe('loadConfig — kbGlobalPage validation', () => {
   it('accepts a page name with no slash and no .md suffix', () => {
     const cfg = loadConfig({ ...BASE_ENV, KB_GLOBAL_PAGE: 'SharedKB' });
     expect(cfg.kbGlobalPage).toBe('SharedKB');
+  });
+
+  // Attack-shape rejection cases added per #264 / #326 ─────────────────────
+  it('rejects a page name containing shell metacharacters (semicolon)', () => {
+    expect(() =>
+      loadConfig({ ...BASE_ENV, KB_GLOBAL_PAGE: 'foo; echo pwned' }),
+    ).toThrow();
+  });
+
+  it('rejects a page name with a leading dot (.git)', () => {
+    expect(() =>
+      loadConfig({ ...BASE_ENV, KB_GLOBAL_PAGE: '.git' }),
+    ).toThrow();
+  });
+
+  it('rejects a page name containing backtick command substitution', () => {
+    expect(() =>
+      loadConfig({ ...BASE_ENV, KB_GLOBAL_PAGE: 'foo`whoami`' }),
+    ).toThrow();
+  });
+
+  it('rejects a page name containing dollar-paren command substitution', () => {
+    expect(() =>
+      loadConfig({ ...BASE_ENV, KB_GLOBAL_PAGE: 'foo$(id)' }),
+    ).toThrow();
+  });
+
+  it('rejects a page name containing a newline', () => {
+    expect(() =>
+      loadConfig({ ...BASE_ENV, KB_GLOBAL_PAGE: 'foo\nbar' }),
+    ).toThrow();
+  });
+
+  // Acceptance case — internal spaces must remain valid ────────────────────
+  it('accepts a page name containing internal spaces', () => {
+    const cfg = loadConfig({ ...BASE_ENV, KB_GLOBAL_PAGE: 'My KB Page' });
+    expect(cfg.kbGlobalPage).toBe('My KB Page');
   });
 });
 
