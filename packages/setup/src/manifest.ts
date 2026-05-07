@@ -42,6 +42,20 @@ export class ManifestNameTooLongError extends Error {
 }
 
 /**
+ * Thrown when `manifestStartUrl` is called with `ownerType: 'org'` but no
+ * `orgLogin` is provided.
+ *
+ * Enables programmatic callers to distinguish this precondition violation from
+ * other `Error` instances via `instanceof OrgLoginRequiredError`.
+ */
+export class OrgLoginRequiredError extends Error {
+  constructor() {
+    super('orgLogin is required when ownerType is "org"');
+    this.name = 'OrgLoginRequiredError';
+  }
+}
+
+/**
  * Thrown when a GitHub organisation login does not conform to GitHub's
  * documented login format.
  *
@@ -226,7 +240,7 @@ export function manifestStartUrl(args: ManifestStartUrlArgs): string {
 
   if (ownerType === 'org') {
     if (!orgLogin) {
-      throw new Error('orgLogin is required when ownerType is "org"');
+      throw new OrgLoginRequiredError();
     }
     validateGithubLogin(orgLogin);
     return `https://github.com/organizations/${orgLogin}/settings/apps/new?state=${encodedState}`;

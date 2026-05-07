@@ -5,6 +5,7 @@ import {
   buildManifest,
   manifestStartUrl,
   ManifestNameTooLongError,
+  OrgLoginRequiredError,
   validateGithubLogin,
   InvalidGithubLoginError,
 } from './manifest.js';
@@ -211,9 +212,14 @@ describe('manifestStartUrl', () => {
   });
 
   it('throws when ownerType="org" but orgLogin is missing', () => {
-    expect(() =>
-      manifestStartUrl({ ownerType: 'org', state: 'abc' }),
-    ).toThrow('orgLogin is required');
+    let caught: unknown;
+    try {
+      manifestStartUrl({ ownerType: 'org', state: 'abc' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(OrgLoginRequiredError);
+    expect((caught as OrgLoginRequiredError).message).toContain('orgLogin is required');
   });
 
   it('throws InvalidGithubLoginError when orgLogin is invalid (contains space)', () => {
