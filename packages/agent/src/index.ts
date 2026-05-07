@@ -14,6 +14,7 @@ import type { ClaudeAdapter } from './claude/adapter.js';
 import { SkillRunner } from './runner/skill-runner.js';
 import { createGitHubAdapter } from './github/client.js';
 import { WorktreeManager } from './git/worktree.js';
+import { WikiManager } from './kb/wiki.js';
 import { AgentMetrics } from './metrics.js';
 
 function pickClaudeAdapter(config: Config, logger: Logger): ClaudeAdapter {
@@ -116,6 +117,9 @@ async function main(): Promise<void> {
   const adapter = pickClaudeAdapter(config, logger);
   const github = createGitHubAdapter(config, logger);
   const worktreeManager = new WorktreeManager(config, soulRef, logger);
+  // Share the token cache so both managers use a single GitHub App auth call.
+  // WikiManager is instantiated here; wiring into SkillRunner is tracked in #257.
+  const wikiManager = new WikiManager(config, soulRef, logger, worktreeManager.getTokenCache());
   const metrics = new AgentMetrics(initialSoul.frontmatter.name);
   const runner = new SkillRunner({
     config,

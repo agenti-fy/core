@@ -26,8 +26,11 @@ export interface PreparedWorktree {
 /**
  * GitHub App installation tokens are valid for 1 hour. Cache and refresh just
  * before expiry to avoid one HTTPS round-trip per worktree prepare().
+ *
+ * Exported so WikiManager can receive a shared instance via constructor DI,
+ * removing the need for a second App auth call per dispatch.
  */
-class InstallationTokenCache {
+export class InstallationTokenCache {
   private value: { token: string; expiresAt: number } | null = null;
 
   constructor(
@@ -56,8 +59,11 @@ class InstallationTokenCache {
  * so `git fetch`, `git push`, and `git pull` issued by the Claude SDK's tool
  * subprocesses all authenticate without the token ever appearing in process
  * env or in any persisted git URL.
+ *
+ * Exported so WikiManager can configure the same credential helper on the
+ * wiki bare clone, pointing at the same `.token` file owned by WorktreeManager.
  */
-function credentialHelperCommand(tokenFile: string): string {
+export function credentialHelperCommand(tokenFile: string): string {
   // Shell function. Single-quote everything so paths can't be misinterpreted.
   // Token never appears in argv or env — only on disk in `tokenFile` (mode 0600).
   return `!f() { printf 'username=x-access-token\\npassword=%s\\n' "$(cat '${tokenFile}')"; }; f`;
@@ -68,8 +74,10 @@ function credentialHelperCommand(tokenFile: string): string {
  * on the same repo (multiple agents, or rapid task succession) would otherwise
  * burn the GitHub installation's secondary rate limit and add seconds of
  * wall-clock latency per prepare() on a large monorepo.
+ *
+ * Exported so WikiManager can share the same TTL constant without drift.
  */
-const FETCH_TTL_MS = 60_000;
+export const FETCH_TTL_MS = 60_000;
 
 /**
  * Manages per-repo bare clones and per-job worktrees.
@@ -94,6 +102,14 @@ export class WorktreeManager {
     private readonly logger: Logger,
   ) {
     this.tokenCache = buildTokenCache(config);
+  }
+
+  /**
+   * Expose the token cache so index.ts can hand the same instance to
+   * WikiManager — avoids a second GitHub App auth round-trip per dispatch.
+   */
+  getTokenCache(): InstallationTokenCache | null {
+    return this.tokenCache;
   }
 
   async prepare(repo: string, job_id: string, branch?: string): Promise<PreparedWorktree> {
@@ -220,7 +236,8 @@ export class WorktreeManager {
   }
 }
 
-function buildTokenCache(config: Config): InstallationTokenCache | null {
+/** Exported for use by index.ts so a single cache instance is shared. */
+export function buildTokenCache(config: Config): InstallationTokenCache | null {
   if (config.disableGithub) return null;
   // The schema's superRefine guarantees these are present when disableGithub
   // is false, but TS can't see through that — defensive throws if not.
@@ -240,7 +257,11 @@ function buildTokenCache(config: Config): InstallationTokenCache | null {
   );
 }
 
-function gitIdentityFor(soul: ParsedSoul): { name: string; email: string } {
+/**
+ * Derive the git user.name / user.email for a SOUL. Exported so WikiManager
+ * can set the same identity on wiki worktrees without duplicating the logic.
+ */
+export function gitIdentityFor(soul: ParsedSoul): { name: string; email: string } {
   if (soul.frontmatter.git?.name && soul.frontmatter.git.email) {
     return { name: soul.frontmatter.git.name, email: soul.frontmatter.git.email };
   }
@@ -340,7 +361,12 @@ async function addWorktreeFromDefault(
   );
 }
 
-async function runGit(args: string[]): Promise<{ stdout: string; stderr: string }> {
+/**
+ * Thin wrapper around `git` that scrubs auth tokens from error messages.
+ * Exported so WikiManager can route all wiki git commands through the same
+ * wrapper instead of maintaining a duplicate copy.
+ */
+export async function runGit(args: string[]): Promise<{ stdout: string; stderr: string }> {
   try {
     return await exec('git', args, {
       maxBuffer: 64 * 1024 * 1024,
