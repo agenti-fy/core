@@ -24,7 +24,7 @@ function printHelp(): void {
       `  agentify-setup verify                  Verify existing .env and App installations\n` +
       `\n` +
       `Options:\n` +
-      `  --prefix <s>           Name prefix for the nine GitHub Apps (e.g. "myorg")\n` +
+      `  --prefix <s>           Name prefix for the ten GitHub Apps (e.g. "myorg")\n` +
       `  --repo <owner/name>    Target repository (e.g. "acme/my-project")\n` +
       `  --dry-run              Print the generated .env to stdout; do not write to disk\n` +
       `  --state-file <path>    Override the default state file location\n` +

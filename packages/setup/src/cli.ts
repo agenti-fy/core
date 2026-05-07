@@ -24,7 +24,7 @@ export type Subcommand = 'init' | 'resume' | 'verify';
 export interface CliArgs {
   /** Active subcommand. Defaults to 'init'. */
   subcommand: Subcommand;
-  /** `--prefix <s>` — name prefix for the nine GitHub Apps (e.g. "myorg"). */
+  /** `--prefix <s>` — name prefix for the ten GitHub Apps (e.g. "myorg"). */
   prefix: string | undefined;
   /** `--repo <owner/name>` — target repository. */
   repo: string | undefined;
