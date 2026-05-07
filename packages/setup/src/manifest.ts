@@ -41,6 +41,61 @@ export class ManifestNameTooLongError extends Error {
   }
 }
 
+/**
+ * Thrown when a GitHub organisation login does not conform to GitHub's
+ * documented login format.
+ *
+ * GitHub login rules (Personal accounts / Org names):
+ *   - 1–39 characters
+ *   - ASCII alphanumerics or hyphens only
+ *   - No leading or trailing hyphen
+ *   - No consecutive hyphens
+ *
+ * Reference: https://docs.github.com/en/organizations/managing-organization-settings/renaming-an-organization
+ */
+export class InvalidGithubLoginError extends Error {
+  /** The offending login string that failed validation. */
+  readonly login: string;
+
+  constructor(login: string) {
+    super(
+      `"${login}" is not a valid GitHub login. Logins must be 1–39 characters, contain only ASCII alphanumerics or hyphens, and must not start or end with a hyphen or contain consecutive hyphens.`,
+    );
+    this.name = 'InvalidGithubLoginError';
+    this.login = login;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates that `login` conforms to GitHub's documented login format.
+ *
+ * GitHub login rules (Personal accounts / Org names):
+ *   - 1–39 characters
+ *   - ASCII alphanumerics or hyphens only (`[A-Za-z0-9-]`)
+ *   - No leading or trailing hyphen
+ *   - No consecutive hyphens
+ *
+ * Reference: https://docs.github.com/en/organizations/managing-organization-settings/renaming-an-organization
+ *
+ * Equivalent regex: `^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$`
+ *
+ * @throws {@link InvalidGithubLoginError} when `login` does not match the format.
+ */
+export function validateGithubLogin(login: string): void {
+  // GitHub login: 1–39 chars, alphanumerics + hyphens, no leading/trailing
+  // hyphen, no consecutive hyphens.
+  // The lookahead `-(?=[A-Za-z0-9])` ensures each hyphen is followed by an
+  // alphanumeric character, preventing trailing and consecutive hyphens.
+  const GITHUB_LOGIN_REGEX = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
+  if (!GITHUB_LOGIN_REGEX.test(login)) {
+    throw new InvalidGithubLoginError(login);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -173,6 +228,7 @@ export function manifestStartUrl(args: ManifestStartUrlArgs): string {
     if (!orgLogin) {
       throw new Error('orgLogin is required when ownerType is "org"');
     }
+    validateGithubLogin(orgLogin);
     return `https://github.com/organizations/${orgLogin}/settings/apps/new?state=${encodedState}`;
   }
 
