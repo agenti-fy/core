@@ -184,6 +184,7 @@ Required permissions:
 - **Issues**: Read & Write
 - **Pull requests**: Read & Write
 - **Metadata**: Read
+- **Wiki**: Read & Write — required for the per-repo knowledge base; the agent clones the wiki as a separate git repo and pushes KB page updates via the installation token. If the wiki is not enabled on a repo, KB is silently disabled for that repo (see `KB_ENABLED`).
 - (optional) **Members**: Read — for some org-level operations
 
 Subscribe to events: not required (the system polls; it doesn't use webhooks).
