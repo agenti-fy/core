@@ -61,6 +61,7 @@ export const APP_PERMISSIONS = Object.freeze({
   issues: 'write',
   pull_requests: 'write',
   metadata: 'read',
+  wiki: 'write',
 } as const);
 
 /**

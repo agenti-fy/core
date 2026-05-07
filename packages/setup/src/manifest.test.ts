@@ -86,6 +86,20 @@ describe('buildManifest — permissions', () => {
     expect(manifest.default_permissions).toStrictEqual(APP_PERMISSIONS);
   });
 
+  it('default_permissions includes wiki:write (required for per-repo KB)', () => {
+    // README §"GitHub App setup" lists Wiki as required — not optional — because
+    // every persona App needs wiki write to push KB page updates.  This assertion
+    // is an explicit, README-anchored lock so the permission cannot be silently
+    // dropped from APP_PERMISSIONS without a test failure.
+    const manifest = buildManifest({
+      prefix: 'test',
+      persona: 'theorist',
+      callbackUrl: 'http://localhost:3000/callback',
+      ownerType: 'user',
+    });
+    expect(manifest.default_permissions.wiki).toBe('write');
+  });
+
   it('default_events is an empty array', () => {
     const manifest = buildManifest({
       prefix: 'test',

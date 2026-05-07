@@ -57,11 +57,12 @@ describe('APP_PERMISSIONS', () => {
       issues: 'write',
       pull_requests: 'write',
       metadata: 'read',
+      wiki: 'write',
     });
   });
 
-  it('has exactly the four documented permission keys', () => {
-    expect(Object.keys(APP_PERMISSIONS)).toHaveLength(4);
+  it('has exactly the five documented permission keys', () => {
+    expect(Object.keys(APP_PERMISSIONS)).toHaveLength(5);
   });
 
   it('is frozen', () => {
