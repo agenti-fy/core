@@ -455,7 +455,7 @@ describe('monitorPullRequests — SHA-skip guard', () => {
     await monitorPullRequests(github as never, store as never, config, noopLogger);
 
     expect(github.issues.setLabels).toHaveBeenCalledOnce();
-    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    const { labels } = github.issues.setLabels.mock.calls[0]![0] as { labels: string[] };
     expect(labels).toContain('agent:conductor:review');
     expect(labels).not.toContain('agent:skeptic:review');
   });
@@ -472,7 +472,7 @@ describe('monitorPullRequests — SHA-skip guard', () => {
     await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
 
     expect(github.issues.setLabels).toHaveBeenCalledOnce();
-    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    const { labels } = github.issues.setLabels.mock.calls[0]![0] as { labels: string[] };
     expect(labels).toContain('agent:skeptic:review');
   });
 
@@ -486,7 +486,7 @@ describe('monitorPullRequests — SHA-skip guard', () => {
     await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
 
     expect(github.issues.setLabels).toHaveBeenCalledOnce();
-    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    const { labels } = github.issues.setLabels.mock.calls[0]![0] as { labels: string[] };
     expect(labels).toContain('agent:skeptic:review');
   });
 
@@ -504,7 +504,7 @@ describe('monitorPullRequests — SHA-skip guard', () => {
     await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
 
     expect(github.issues.setLabels).toHaveBeenCalledOnce();
-    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    const { labels } = github.issues.setLabels.mock.calls[0]![0] as { labels: string[] };
     expect(labels).toContain('agent:skeptic:review');
   });
 
@@ -533,7 +533,7 @@ describe('monitorPullRequests — review-cycle cap', () => {
     await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
 
     expect(github.issues.setLabels).toHaveBeenCalledOnce();
-    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    const { labels } = github.issues.setLabels.mock.calls[0]![0] as { labels: string[] };
     expect(labels).toContain('needs-human');
     expect(labels).not.toContain('agent:skeptic:review');
     expect(github.issues.createComment).toHaveBeenCalledOnce();
@@ -547,7 +547,7 @@ describe('monitorPullRequests — review-cycle cap', () => {
     await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
 
     expect(github.issues.setLabels).toHaveBeenCalledOnce();
-    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    const { labels } = github.issues.setLabels.mock.calls[0]![0] as { labels: string[] };
     expect(labels).toContain('agent:skeptic:review');
     expect(labels).not.toContain('needs-human');
     // Cycle counter must NOT be incremented on the first dispatch
@@ -580,7 +580,7 @@ describe('monitorPullRequests — review-cycle cap', () => {
     await monitorPullRequests(github as never, store as never, monitorConfig, noopLogger);
 
     expect(github.issues.setLabels).toHaveBeenCalledOnce();
-    const { labels } = (github.issues.setLabels as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { labels: string[] };
+    const { labels } = github.issues.setLabels.mock.calls[0]![0] as { labels: string[] };
     expect(labels).toContain('agent:skeptic:review');
     expect(labels).not.toContain('needs-human');
   });
