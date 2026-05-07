@@ -9,6 +9,11 @@ Address all `REQUEST_CHANGES` reviews on this PR via commits. Do NOT merge.
 
 ## Procedure
 1. **Check out the PR branch before touching anything.** Your worktree starts on `main`.
+   - If `{{kb_clone_dir}}` is non-empty, consult KB before reading the review thread:
+     ```bash
+     cat {{kb_clone_dir}}/{{kb_global_page}}.md
+     cat {{kb_clone_dir}}/{{kb_persona_page}}.md
+     ```
     ```bash
     gh pr checkout {{target_id}} -R {{repo}} && git rev-parse HEAD
     gh pr view {{target_id}} -R {{repo}} --json reviews,comments,headRefOid
@@ -27,6 +32,12 @@ Address all `REQUEST_CHANGES` reviews on this PR via commits. Do NOT merge.
     ```bash
     gh pr edit {{target_id}} -R {{repo}} --remove-label "agent:{{persona}}:address-review"
     ```
+5. **Contribute KB entry (when warranted).** If `{{kb_clone_dir}}` is empty, skip.
+   Addressing a transient or trivial review nit is NOT KB-worthy — the threshold is
+   "would a future agent on this repo benefit from this?". If yes:
+   ```bash
+   echo "<entry body>" | agentify-kb append persona --from-pr {{target_id}}
+   ```
 
 ## Hard rules
 - Append commits; never squash.
