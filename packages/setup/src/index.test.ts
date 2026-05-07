@@ -6,12 +6,16 @@
  */
 
 import { PassThrough } from 'node:stream';
-import { describe, it, expect, vi, type MockedFunction } from 'vitest';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockedFunction } from 'vitest';
 import { run, type PhaseFn, type RunDeps, type FinalizeDeps, type VerifyDeps } from './index.js';
 import { PromptCancelled } from './prompts.js';
 import type { CliArgs } from './cli.js';
 import type { IoStreams } from './prompts.js';
-import type { WizardState } from './state.js';
+import { loadState, saveState, stateForSave, type WizardState } from './state.js';
+import { DecryptError } from './crypto.js';
 import type { PreambleResult, PreambleOpts } from './driver/preamble.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -437,5 +441,128 @@ describe('run — state checkpointing', () => {
     for (const opt of saveOpts) {
       expect(opt?.dir).toBe('/tmp/custom');
     }
+  });
+});
+
+// ── Encrypt-at-rest regression (v2 policy) ───────────────────────────────────
+
+/**
+ * Realistic PEM fixture used across the encrypt-at-rest regression tests.
+ * Contains the canonical `-----BEGIN` / `-----END` markers that must never
+ * appear in plaintext in an on-disk state file.
+ */
+const SAMPLE_PEM =
+  '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0000fakekeydata\n-----END RSA PRIVATE KEY-----\n';
+
+/**
+ * A fully-populated PersonaCreds fixture used to build states with real
+ * credential-shaped data for the encryption regression tests.
+ */
+const ENCRYPT_TEST_CREDS = {
+  appId: 12345,
+  slug: 'test-prefix-orchestrator',
+  name: 'Test Prefix Orchestrator',
+  htmlUrl: 'https://github.com/apps/test-prefix-orchestrator',
+  pem: SAMPLE_PEM,
+  clientId: 'Iv1.abc12345678',
+  clientSecret: 's3cr3t-client-secret',
+  webhookSecret: 'wh-secret-value',
+  installationId: 78901,
+  githubUser: 'test-prefix-orchestrator[bot]',
+};
+
+describe('run — init — encrypt-at-rest (v2 policy)', () => {
+  it('does not persist plaintext PEM bytes to disk (v2 policy)', async () => {
+    // Capture every JSON string that the orchestrator would write to disk.
+    const savedJsonStrings: string[] = [];
+
+    const deps = makeDeps({
+      // Stub the apps phase to return a persona with a realistic PEM.
+      runApps: vi.fn(async () => ({
+        personas: {
+          orchestrator: ENCRYPT_TEST_CREDS,
+        },
+      })),
+      // Spy: record JSON.stringify(state, null, 2) — the exact bytes that
+      // saveState would write to the file.
+      saveState: vi.fn(async (state: WizardState) => {
+        savedJsonStrings.push(JSON.stringify(state, null, 2));
+      }),
+      // Inject a fixed passphrase so the test never touches the prompt loop.
+      passphraseProvider: vi.fn(async () => 'test-passphrase-12chars'),
+    });
+
+    await run(args('init'), deps);
+
+    // At least one save must have been recorded.
+    expect(savedJsonStrings.length).toBeGreaterThan(0);
+
+    // ── Canonical regression assertion ───────────────────────────────────────
+    // The ADR's threat model demands that no `-----BEGIN` bytes land on disk.
+    // Check every captured save string — this catches any phase ordering bug
+    // that might slip a plaintext save through.
+    for (const savedJson of savedJsonStrings) {
+      expect(savedJson).not.toContain('-----BEGIN');
+      expect(savedJson).not.toContain('-----END');
+    }
+
+    // ── Encryption presence assertion ────────────────────────────────────────
+    // At least one save must contain the `"ciphertext"` key.  This proves the
+    // PEMs are actually encrypted rather than merely stripped from the output.
+    const savesWithEncryptedCreds = savedJsonStrings.filter((s) =>
+      s.includes('"ciphertext"'),
+    );
+    expect(savesWithEncryptedCreds.length).toBeGreaterThan(0);
+  });
+});
+
+// ── Wrong-passphrase rejection ────────────────────────────────────────────────
+
+describe('loadState — wrong passphrase rejection', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentify-idx-test-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('rejects v2 state load with the wrong passphrase', async () => {
+    // Build a valid v2 state with a populated coordinator and one persona.
+    const state: WizardState = {
+      ...MINIMAL_STATE,
+      coordinator: ENCRYPT_TEST_CREDS,
+      personas: {
+        ...MINIMAL_STATE.personas,
+        orchestrator: ENCRYPT_TEST_CREDS,
+      },
+    };
+
+    // Encrypt the sensitive fields with the correct passphrase.
+    const encryptedState = stateForSave(state, 'correct-pass-12c');
+
+    // Write the encrypted state to the temp dir.
+    await saveState(encryptedState, { dir: tmpDir });
+
+    // Capture the on-disk content before the load attempt so we can verify
+    // it is unchanged after a failed load (no partial overwrite / migration).
+    const stateFilePath = path.join(tmpDir, `setup-${state.prefix}.json`);
+    const diskContentBefore = await fs.readFile(stateFilePath, 'utf8');
+
+    // ── DecryptError assertion ────────────────────────────────────────────────
+    // loadState with the wrong passphrase must throw DecryptError — not a
+    // generic Error, not a partial result, not undefined.
+    await expect(
+      loadState(state.prefix, { dir: tmpDir, passphrase: 'wrong-pass-12chr' }),
+    ).rejects.toThrow(DecryptError);
+
+    // ── No-overwrite assertion ────────────────────────────────────────────────
+    // A failed load must leave the on-disk file byte-for-byte identical.
+    // This guards against any future migration / repair logic that might
+    // destructively overwrite a file it failed to decrypt.
+    const diskContentAfter = await fs.readFile(stateFilePath, 'utf8');
+    expect(diskContentAfter).toBe(diskContentBefore);
   });
 });
