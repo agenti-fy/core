@@ -63,6 +63,9 @@ unchanged rather than replaced with an empty string.
 | `{{agent_name}}` | Soul `name` frontmatter field | `soul.frontmatter.name` | Task vars block |
 | `{{persona}}` | Routing-label persona segment | See note below | Task vars block |
 | `{{signature}}` | Closing line for GitHub comments | See note below | Stable template body |
+| `{{kb_clone_dir}}` | Absolute path to the per-job wiki worktree, or empty string when KB is unavailable | `ResolveOptions.kbCloneDir` | Stable template body |
+| `{{kb_global_page}}` | Name of the shared global KB page (e.g. `KB-Global`) | `ResolveOptions.kbGlobalPage` | Stable template body |
+| `{{kb_persona_page}}` | Name of the persona-scoped KB page (e.g. `KB-Tinkerer`) | `ResolveOptions.kbPersonaPage` | Stable template body |
 
 **`{{persona}}`** — for built-in souls (orchestrator, conductor, theorist,
 tinkerer, optimizer, glue, skeptic, crafter, scribe) this equals the soul's
@@ -73,6 +76,20 @@ label. Source: `resolver.ts:54-59`.
 **`{{signature}}`** — resolution order: soul `signature` frontmatter field →
 `PERSONA_DEFAULTS[type].signature` for built-ins → `soul.frontmatter.name`
 for custom souls. Source: `resolver.ts:119-125`.
+
+**`{{kb_clone_dir}}`** — resolved to the absolute path of the per-job wiki
+worktree when the KB is available; resolved to an empty string when the wiki
+is not initialised, `KB_ENABLED=false`, or `WikiManager.prepare()` failed.
+Skill bodies should guard KB invocations with `if [ -n "{{kb_clone_dir}}" ]`.
+Unlike the Task vars tokens, this token IS interpolated directly into the
+stable template body (same as `{{signature}}`). The matching runtime env var
+is `KB_CLONE_DIR`. Source: `resolver.ts` KB interpolation region.
+
+**`{{kb_global_page}}` / `{{kb_persona_page}}`** — the bare page names (no
+`.md` suffix) for the shared global and persona-scoped KB pages respectively.
+Both are interpolated into the stable template body. Values come from the
+agent's `KB_GLOBAL_PAGE` / `KB_PAGE_PREFIX` config and the resolved persona
+name. Source: `resolver.ts` KB interpolation region.
 
 **Common uses in bundled prompts:**
 

@@ -151,7 +151,9 @@ Cost tracking is best-effort: older SDK versions may not report per-turn cost da
 
 ## Knowledge base
 
-Each managed repo accumulates a durable, append-only knowledge base stored as Markdown pages in the repo's GitHub Wiki. At the start of a skill run the agent reads the shared global page (`KB-Global.md`) and the persona-specific page (e.g. `KB-skeptic.md`); at the end of a run the agent may append new observations. The KB lets insights and pitfalls accumulate across successive jobs without inflating Claude's in-context token budget by default. For the full architecture see [SPEC.md §23](../../SPEC.md) and parent plan [#226](https://github.com/agenti-fy/core/issues/226).
+Each managed repo accumulates a durable, append-only knowledge base stored as Markdown pages in the repo's GitHub Wiki. At the start of a skill run the agent reads the shared global page (`KB-Global.md`) and the persona-specific page (e.g. `KB-skeptic.md`); at the end of a run the agent may append new observations. The KB lets insights and pitfalls accumulate across successive jobs without inflating Claude's in-context token budget by default. For the full architecture see [SPEC.md §23](../../SPEC.md) and the operator runbook at [docs/knowledge-base.md](../../docs/knowledge-base.md).
+
+### Configuration env vars
 
 These five vars are **boot-only** (not hot-reloadable); a process restart is required to change them.
 
@@ -164,6 +166,31 @@ These five vars are **boot-only** (not hot-reloadable); a process restart is req
 | `KB_ENTRY_MAX_BYTES` | `1024` | Hard byte cap per appended entry; ceiling `10485760` (10 MiB) — prevents operator typos from ballooning wiki history |
 
 Canonical schema and constraints: `packages/agent/src/config.ts` (`kbEnabled` … `kbEntryMaxBytes` region).
+
+### Runtime env vars (per-job)
+
+`SkillRunner` sets the following env vars for the duration of each skill run and restores the previous values (or unsets them) after the run completes. The `agentify-kb` CLI reads them automatically — no explicit flags required.
+
+| Env var | Set to | Notes |
+|---|---|---|
+| `KB_CLONE_DIR` | Absolute path to the per-job wiki worktree (e.g. `/workspaces/org/repo/.kb/<job_id>`) | **Unset** (not empty-string) when the wiki is unavailable for this run (wiki not initialised, `KB_ENABLED=false`, or `WikiManager.prepare()` failed). Skills guard KB calls with `if [ -n "$KB_CLONE_DIR" ]`. |
+| `AGENTIFY_PERSONA` | Persona name (e.g. `tinkerer`) | Used by `agentify-kb` to derive the persona-scoped page name (e.g. `KB-Tinkerer`). |
+| `AGENTIFY_JOB_ID` | Job identifier (e.g. `j_01HXY...`) | Embedded in the commit message and entry source link by `agentify-kb append`. |
+| `AGENTIFY_TARGET_ID` | Target issue or PR number as a string | Embedded in the entry source link by `agentify-kb append`. |
+
+Source: `src/runner/skill-runner.ts`.
+
+### The `agentify-kb` CLI
+
+`agentify-kb` is the **only supported write path** for KB pages. Direct `git commit` to a KB page is allowed but discouraged — the helper enforces the append-only page format (date stamp, source link, signature footer, leading horizontal rule) and handles concurrent-push conflicts automatically.
+
+```
+agentify-kb append <persona|global>   # read entry from stdin; stamp + push
+agentify-kb read   <persona|global>   # cat the page to stdout
+agentify-kb list                      # list all pages in KB_CLONE_DIR
+```
+
+**KB writes are best-effort.** A push failure (e.g. conflict-retry limit reached) does **not** fail the job — the skill run continues and the job outcome is unaffected. The failure is logged at `warn` level and increments `agentify_kb_writes_total{outcome="conflict_retry_exhausted"}`. See [SPEC.md §23](../../SPEC.md) §23 Risks §3 and [docs/knowledge-base.md](../../docs/knowledge-base.md) for troubleshooting.
 
 ## Local dev
 
