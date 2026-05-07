@@ -166,6 +166,42 @@ describe('KbWriteRecordSchema', () => {
     const result = KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, sha: '' });
     expect(result.success).toBe(false);
   });
+
+  // sha regex: /^[0-9a-f]{7,64}$/ — positive boundary cases
+  it('accepts 7-char lowercase hex sha (short SHA boundary)', () => {
+    expect(KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, sha: 'abc1234' }).success).toBe(true);
+  });
+
+  it('accepts 40-char lowercase hex sha (Git SHA-1)', () => {
+    expect(
+      KbWriteRecordSchema.safeParse({
+        ...VALID_KB_WRITE,
+        sha: 'a'.repeat(40),
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepts 64-char lowercase hex sha (SHA-256 forward-compat boundary)', () => {
+    expect(
+      KbWriteRecordSchema.safeParse({
+        ...VALID_KB_WRITE,
+        sha: 'f'.repeat(64),
+      }).success,
+    ).toBe(true);
+  });
+
+  // sha regex: negative cases
+  it('rejects 6-char sha (below 7-char minimum)', () => {
+    expect(KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, sha: 'abc123' }).success).toBe(false);
+  });
+
+  it('rejects uppercase hex sha', () => {
+    expect(KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, sha: 'ABC1234' }).success).toBe(false);
+  });
+
+  it('rejects non-hex sha ("g".repeat(8))', () => {
+    expect(KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, sha: 'g'.repeat(8) }).success).toBe(false);
+  });
 });
 
 /* ======================================================================== */
@@ -265,6 +301,36 @@ describe('JobArtifactsSchema kb_writes slots', () => {
       },
     };
     expect(JobArtifactsSchema.safeParse(input).success).toBe(false);
+  });
+
+  // kb_writes.max(64) — the cap is uniform across all five slots; we test via
+  // the implement slot and trust the single schema definition applies equally.
+  it('accepts exactly 64 kb_write entries in the implement slot', () => {
+    const entries = Array.from({ length: 64 }, (_, i) => ({
+      page: `KB-Page${i}`,
+      scope: 'global' as const,
+      bytes: 1,
+    }));
+    const input = {
+      implement: { branch: 'feat/x/1-foo', pr_number: 1, kb_writes: entries },
+    };
+    expect(JobArtifactsSchema.safeParse(input).success).toBe(true);
+  });
+
+  it('rejects 65 kb_write entries in the implement slot (over the 64-entry cap)', () => {
+    const entries = Array.from({ length: 65 }, (_, i) => ({
+      page: `KB-Page${i}`,
+      scope: 'global' as const,
+      bytes: 1,
+    }));
+    const input = {
+      implement: { branch: 'feat/x/1-foo', pr_number: 1, kb_writes: entries },
+    };
+    const result = JobArtifactsSchema.safeParse(input);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain('kb_writes capped at 64 entries per job');
+    }
   });
 });
 
