@@ -25,6 +25,7 @@ import {
   EncryptedValueSchema,
   type EncryptedValue,
 } from './crypto.js';
+import { printOk, type IoStreams } from './prompts.js';
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -155,6 +156,86 @@ export const WizardStateSchema = z.object({
 /** In-progress wizard state persisted between runs. */
 export type WizardState = z.infer<typeof WizardStateSchema>;
 
+// ── V1 schema (legacy — migration only) ──────────────────────────────────────
+
+/**
+ * V1 persona credentials schema — plaintext-only secret fields.
+ *
+ * Used exclusively in {@link loadState} to detect and migrate v1 state files.
+ * Not exported: callers always work with the v2 {@link PersonaCredsSchema}.
+ */
+const V1PersonaCredsSchema = z.object({
+  appId: z.number().int().positive(),
+  slug: z.string().min(1),
+  name: z.string().min(1),
+  htmlUrl: z.string().min(1),
+  pem: z.string().min(1),
+  clientId: z.string().min(1),
+  clientSecret: z.string().min(1),
+  webhookSecret: z.string().nullable(),
+  installationId: z.number().int().positive(),
+  githubUser: z.string().min(1),
+});
+
+const V1PersonasSchema = z.object(
+  Object.fromEntries(
+    BUILTIN_PERSONAS.map((p) => [p, V1PersonaCredsSchema.optional()]),
+  ) as {
+    [K in (typeof BUILTIN_PERSONAS)[number]]: z.ZodOptional<
+      typeof V1PersonaCredsSchema
+    >;
+  },
+);
+
+/**
+ * V1 top-level wizard state schema.
+ *
+ * The shape is identical to v2 except `version` is the literal `1` and all
+ * credential fields are plaintext-only strings.
+ *
+ * Not exported — only used internally by {@link LegacyOrV2Schema}.
+ */
+const V1WizardStateSchema = z.object({
+  version: z.literal(1),
+  prefix: z.string().min(1),
+  repo: z.object({
+    owner: z.string().min(1),
+    name: z.string().min(1),
+    ownerId: z.number().int().optional(),
+    repoId: z.number().int().optional(),
+  }),
+  ownerType: z.enum(['personal', 'organization']),
+  coordinator: V1PersonaCredsSchema.optional(),
+  personas: V1PersonasSchema,
+  anthropic: AnthropicCredsSchema.optional(),
+  tunables: TunablesSchema,
+});
+
+/** Inferred type for a parsed v1 state file. */
+type V1WizardState = z.infer<typeof V1WizardStateSchema>;
+
+/**
+ * Promote a v1 state (plaintext fields) to a v2 in-memory state.
+ *
+ * Only changes `version` — no encryption.  The returned state is the plaintext
+ * v2 shape used by callers.  Encryption-for-disk is handled separately by
+ * {@link stateForSave} before calling {@link saveState}.
+ */
+function v1ToV2(v1: V1WizardState): WizardState {
+  // V1PersonaCreds is structurally assignable to PersonaCreds: each field that
+  // is `string` in V1 is `string | EncryptedValue` in V2, and string ⊆ that
+  // union.  The spread + version override is safe; no secrets are modified.
+  return { ...(v1 as unknown as WizardState), version: 2 };
+}
+
+/**
+ * Union schema that accepts either a v1 (legacy) or v2 (current) state file.
+ *
+ * {@link loadState} parses with this schema so it can detect v1 files and
+ * migrate them in place before returning a v2 state to the caller.
+ */
+const LegacyOrV2Schema = z.union([WizardStateSchema, V1WizardStateSchema]);
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -236,8 +317,17 @@ export interface StateOptions {
    * If the parsed state contains any encrypted field and `passphrase` is
    * **not** supplied, {@link loadState} throws an error rather than returning
    * opaque ciphertext objects to the caller.
+   *
+   * For v1 → v2 migration, `passphrase` is **required**: {@link loadState}
+   * throws a clear error if a v1 file is encountered without a passphrase.
    */
   passphrase?: string;
+  /**
+   * I/O streams used to print the one-time migration notice when a v1 state
+   * file is migrated to v2.  When omitted the notice is suppressed (useful
+   * in tests that don't care about stdout output).
+   */
+  io?: IoStreams;
 }
 
 /**
@@ -275,7 +365,7 @@ export async function loadState(
     );
   }
 
-  const result = WizardStateSchema.safeParse(parsed);
+  const result = LegacyOrV2Schema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
       `State file at "${filePath}" does not match the expected schema: ` +
@@ -284,6 +374,36 @@ export async function loadState(
   }
 
   const passphrase = opts?.passphrase;
+
+  // ── V1 → V2 migration branch ───────────────────────────────────────────────
+  if (result.data.version === 1) {
+    if (!passphrase) {
+      throw new Error(
+        `State file at "${filePath}" is version 1 (plaintext PEMs) and must be ` +
+          'migrated to v2 (encrypted at rest). ' +
+          'Supply a passphrase via AGENTIFY_SETUP_PASSPHRASE or run agentify-setup interactively.',
+      );
+    }
+
+    // Promote to v2 in memory — plaintext fields preserved for the caller.
+    const v2State = v1ToV2(result.data);
+
+    // Encrypt sensitive fields and persist atomically as v2.
+    const stateToSave = stateForSave(v2State, passphrase);
+    await saveState(stateToSave, { dir });
+
+    // Print a one-time operator notice (suppressed when io is not supplied).
+    if (opts?.io) {
+      printOk(
+        'Migrated state file from v1 to v2 (PEMs now encrypted at rest).',
+        opts.io,
+      );
+    }
+
+    return v2State;
+  }
+
+  // ── V2 path — existing decrypt / guard logic ───────────────────────────────
   if (passphrase) {
     return decryptStateOnLoad(result.data, passphrase);
   }

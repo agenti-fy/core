@@ -393,6 +393,88 @@ describe('clearState', () => {
   });
 });
 
+// ── V1 → V2 migration ────────────────────────────────────────────────────────
+
+/**
+ * A minimal v1 state fixture (plaintext PEMs, version: 1).
+ * Constructed explicitly so it survives future bumps to WizardStateSchema.
+ */
+const V1_FIXTURE = {
+  version: 1,
+  prefix: 'v1-test',
+  repo: { owner: 'alice', name: 'sandbox' },
+  ownerType: 'personal',
+  coordinator: {
+    appId: 1,
+    slug: 'v1-test-orchestrator',
+    name: 'V1 Test Orchestrator',
+    htmlUrl: 'https://github.com/apps/v1-test-orchestrator',
+    pem: '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----\n',
+    clientId: 'Iv1.abc12345678',
+    clientSecret: 's3cr3t',
+    webhookSecret: 'wh-secret',
+    installationId: 78901,
+    githubUser: 'v1-test-orchestrator[bot]',
+  },
+  personas: {},
+};
+
+describe('loadState — v1 → v2 migration', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await makeTmpDir();
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('migrates a v1 state file on load: returns v2 in-memory state with plaintext PEMs', async () => {
+    // Write a v1 fixture to disk.
+    const filePath = path.join(tmpDir, 'setup-v1-test.json');
+    await fs.writeFile(filePath, JSON.stringify(V1_FIXTURE), 'utf8');
+
+    const loaded = await loadState('v1-test', {
+      dir: tmpDir,
+      passphrase: 'super-secret-passphrase',
+    });
+
+    // The caller receives version 2 with plaintext PEMs.
+    expect(loaded).not.toBeNull();
+    expect(loaded?.version).toBe(2);
+    expect(typeof loaded?.coordinator?.pem).toBe('string');
+    expect(loaded?.coordinator?.pem).toContain('-----BEGIN');
+    expect(typeof loaded?.coordinator?.clientSecret).toBe('string');
+    expect(loaded?.coordinator?.clientSecret).toBe('s3cr3t');
+
+    // The file on disk must now be v2 with encrypted (not plaintext) PEMs.
+    const onDisk = JSON.parse(await fs.readFile(filePath, 'utf8')) as Record<string, unknown>;
+    expect(onDisk['version']).toBe(2);
+    const coord = onDisk['coordinator'] as Record<string, unknown>;
+    // pem field should be an EncryptedValue object, not a plain string.
+    expect(typeof coord['pem']).toBe('object');
+    expect((coord['pem'] as Record<string, unknown>)['version']).toBe(2);
+    // No plaintext PEM bytes on disk.
+    const diskJson = await fs.readFile(filePath, 'utf8');
+    expect(diskJson).not.toContain('-----BEGIN');
+  });
+
+  it('throws a clear error when a v1 state file is loaded without a passphrase', async () => {
+    // Write a v1 fixture to disk.
+    const filePath = path.join(tmpDir, 'setup-v1-test.json');
+    await fs.writeFile(filePath, JSON.stringify(V1_FIXTURE), 'utf8');
+
+    await expect(loadState('v1-test', { dir: tmpDir })).rejects.toThrow(
+      /version 1.*passphrase|AGENTIFY_SETUP_PASSPHRASE/i,
+    );
+
+    // The original v1 file must be untouched.
+    const stillV1 = JSON.parse(await fs.readFile(filePath, 'utf8')) as Record<string, unknown>;
+    expect(stillV1['version']).toBe(1);
+  });
+});
+
 // ── Concurrent save ───────────────────────────────────────────────────────────
 
 describe('concurrent saveState calls', () => {
