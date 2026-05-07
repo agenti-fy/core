@@ -6,9 +6,9 @@
  * {@link run}             – main entry; call from bin.ts.
  * {@link RunDeps}         – injectable dependencies (for testing).
  * {@link PhaseOpts}       – common options bag passed to every driver phase.
- * {@link runApps}         – stub for the per-persona App-creation loop (#428).
- * {@link runAnthropic}    – stub for the Anthropic credentials phase (#429).
- * {@link runFinalize}     – stub for the .env write + verify phase (#430).
+ * {@link runApps}         – per-persona App-creation loop (driver/apps.ts).
+ * {@link runAnthropic}    – stub for the Anthropic credentials phase (#430).
+ * {@link runFinalize}     – stub for the .env write + verify phase (#431).
  *
  * Phase contract
  * --------------
@@ -19,11 +19,10 @@
  *
  * Stub implementations
  * --------------------
- * `runApps`, `runAnthropic`, and `runFinalize` are exported stubs — they
- * satisfy the {@link PhaseFn} interface and pass all type checks, but do
- * nothing.  Issues #428, #429, and #430 will replace the function bodies;
- * the signatures and JSDoc below define the stable surface those issues
- * implement against.
+ * `runAnthropic` and `runFinalize` are exported stubs — they satisfy the
+ * {@link PhaseFn} interface and pass all type checks, but do nothing.
+ * Issues #430 and #431 will replace the function bodies; the signatures and
+ * JSDoc below define the stable surface those issues implement against.
  */
 
 import * as os from 'node:os';
@@ -33,6 +32,7 @@ import type { CliArgs } from './cli.js';
 import { PromptCancelled, printErr, type IoStreams } from './prompts.js';
 import { loadState, saveState, type WizardState } from './state.js';
 import { runPreamble, type GhExec } from './driver/preamble.js';
+import { runApps } from './driver/apps.js';
 
 // ── Phase types ───────────────────────────────────────────────────────────────
 
@@ -61,24 +61,12 @@ export type PhaseFn = (opts: PhaseOpts) => Promise<Partial<WizardState>>;
 
 // ── Stub phases ───────────────────────────────────────────────────────────────
 
-/**
- * **Stub — implemented by #428 (`driver/apps.ts`).**
- *
- * Drives the per-persona App-creation loop: for each of the nine built-in
- * personas it opens the GitHub App Manifest form in a browser, waits for the
- * OAuth callback, exchanges the code for credentials, opens the install page,
- * and polls until the installation is confirmed.
- *
- * Returns a partial state that fills in `state.coordinator` and each entry
- * in `state.personas` once created.
- */
-export const runApps: PhaseFn = async (_opts) => {
-  // TODO (#428): implement per-persona App-creation loop.
-  return {};
-};
+// runApps is the real implementation from driver/apps.ts — re-exported here so
+// index.ts remains the single import point for the orchestrator and its tests.
+export { runApps };
 
 /**
- * **Stub — implemented by #429 (`driver/anthropic.ts`).**
+ * **Stub — implemented by #430 (`driver/anthropic.ts`).**
  *
  * Guides the operator through choosing an Anthropic authentication path
  * (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`) and capturing the
