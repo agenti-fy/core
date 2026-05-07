@@ -51,6 +51,19 @@ export class InstallationTokenCache {
     };
     return result.token;
   }
+
+  /**
+   * Atomically write the current token into `tokenFile` (mode 0600).
+   * Uses a `.tmp` sibling + rename so readers never see a half-written file.
+   * Safe to call repeatedly — last writer wins with identical (or freshly
+   * refreshed) content.
+   */
+  async ensureFile(tokenFile: string): Promise<void> {
+    const token = await this.get();
+    const tmp = `${tokenFile}.tmp`;
+    await writeFile(tmp, token, { mode: 0o600 });
+    await rename(tmp, tokenFile);
+  }
 }
 
 /**
@@ -130,7 +143,8 @@ export class WorktreeManager {
     const helper = credentialHelperCommand(tokenFile);
 
     // Refresh token file (atomic write+rename, mode 0600).
-    await this.writeTokenFile(tokenFile);
+    if (!this.tokenCache) throw new Error('GitHub disabled — no token available');
+    await this.tokenCache.ensureFile(tokenFile);
 
     if (!(await pathExists(bareDir))) {
       this.logger.info({ repo, bareDir }, 'cloning bare repo');
@@ -220,19 +234,6 @@ export class WorktreeManager {
       // Then prune to clear orphan worktree metadata in .bare/worktrees/.
       await runGit(['-C', bareDir, 'worktree', 'prune']).catch(() => {});
     }
-  }
-
-  /**
-   * Atomically refresh the per-repo token file. Mode 0600 so other users on
-   * the host can't read it. Atomic via temp-file + rename so a concurrent
-   * read never sees a half-written file.
-   */
-  private async writeTokenFile(tokenFile: string): Promise<void> {
-    if (!this.tokenCache) throw new Error('GitHub disabled — no token available');
-    const token = await this.tokenCache.get();
-    const tmp = `${tokenFile}.tmp`;
-    await writeFile(tmp, token, { mode: 0o600 });
-    await rename(tmp, tokenFile);
   }
 }
 
