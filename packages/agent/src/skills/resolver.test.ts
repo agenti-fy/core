@@ -483,8 +483,9 @@ describe('resolveSkill — KB template variables', () => {
   });
 
   it('default skill prompts do not contain raw {{kb_clone_dir}} after interpolation', () => {
-    // Default prompts don't reference KB vars yet (Phase 4), but ensuring
-    // interpolation is attempted means no stray {{kb_clone_dir}} leaks out.
+    // Phase 4 integrates KB vars into skill prompts (review/merge done; plan/implement/
+    // address-review pending). This test exercises implement, which has no KB vars yet,
+    // but the assertion holds for any method: interpolation must consume all {{kb_*}} tokens.
     const result = resolveSkill({
       ...BASE_OPTS,
       personaName: 'tinkerer',
