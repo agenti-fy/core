@@ -460,3 +460,26 @@ describe('runApps — single CallbackServer instance', () => {
     expect(factoryCalls).toBe(1);
   });
 });
+
+describe('runApps — per-persona checkpoint sanitization', () => {
+  it('does not persist anthropic secret in per-persona checkpoint saves (v1 policy)', async () => {
+    // Even though anthropic is normally undefined during the apps phase, a
+    // forward-compat guard is required: if for any reason the state passed to
+    // runApps contains a populated anthropic field, each checkpoint must strip
+    // it before persisting — exactly as the orchestrator top-level saves do in
+    // index.ts (regression-test mirror of index.test.ts:209-224).
+    const stateWithAnthropic = makeState({
+      anthropic: { kind: 'api_key' as const, value: 'sk-ant-supersecret' },
+    });
+
+    const { deps, savedStates } = makeDeps(stateWithAnthropic);
+
+    await runApps(deps);
+
+    // Every checkpoint written by saveFn must have anthropic === undefined.
+    expect(savedStates.length).toBeGreaterThan(0);
+    for (const s of savedStates) {
+      expect(s.anthropic).toBeUndefined();
+    }
+  });
+});

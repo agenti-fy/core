@@ -24,7 +24,7 @@ import * as path from 'node:path';
 import { BUILTIN_PERSONAS } from '@agentify/shared';
 import type { CliArgs } from './cli.js';
 import { PromptCancelled, printErr, type IoStreams } from './prompts.js';
-import { loadState, saveState, type WizardState } from './state.js';
+import { loadState, saveState, stateForSave, type WizardState } from './state.js';
 import { runPreamble, type GhExec } from './driver/preamble.js';
 import { runApps } from './driver/apps.js';
 import { runAnthropic } from './driver/anthropic.js';
@@ -149,18 +149,6 @@ function mergeState(base: WizardState, patch: Partial<WizardState>): WizardState
 function stateFilePath(prefix: string, dir?: string): string {
   const resolved = dir ?? path.join(os.homedir(), '.config', 'agentify');
   return path.join(resolved, `setup-${prefix}.json`);
-}
-
-/**
- * Strip long-lived secrets before writing state to disk (v1 policy: #426/#430).
- *
- * `anthropic.value` is held in memory so the finalize phase can render it to
- * `.env`, but it must never be written to the checkpoint file.  On `resume`,
- * if `state.anthropic` is absent the wizard re-prompts — that is the correct
- * behaviour per the spec.
- */
-function stateForSave(state: WizardState): WizardState {
-  return { ...state, anthropic: undefined };
 }
 
 // ── run ───────────────────────────────────────────────────────────────────────

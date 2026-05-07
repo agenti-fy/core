@@ -39,7 +39,7 @@ import {
   type RepoRef,
 } from '../install.js';
 import { openInBrowser as defaultOpenInBrowser } from '../open.js';
-import { saveState as defaultSaveState } from '../state.js';
+import { saveState as defaultSaveState, stateForSave } from '../state.js';
 import { InstallationTimeoutError } from '../install.js';
 import {
   printSection,
@@ -317,7 +317,7 @@ export async function runApps(deps: AppsDeps): Promise<Partial<WizardState>> {
         coordinator: updatedCoordinator,
         personas: updatedPersonas,
       };
-      await saveFn(checkpointState);
+      await saveFn(stateForSave(checkpointState));
     }
   } finally {
     // Always close the server, even on error or PromptCancelled.

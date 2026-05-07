@@ -148,6 +148,23 @@ export type WizardState = z.infer<typeof WizardStateSchema>;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+/**
+ * Strip long-lived secrets before writing state to disk (v1 policy: #426/#430).
+ *
+ * `anthropic.value` is held in memory so the finalize phase can render it to
+ * `.env`, but it must never be written to the checkpoint file.  On `resume`,
+ * if `state.anthropic` is absent the wizard re-prompts — that is the correct
+ * behaviour per the spec.
+ *
+ * This is the single source of sanitization policy: every call site that
+ * persists wizard state (orchestrator top-level saves in `index.ts` AND
+ * per-persona checkpoints in `driver/apps.ts`) must pass state through this
+ * function before handing it to `saveState`.
+ */
+export function stateForSave(state: WizardState): WizardState {
+  return { ...state, anthropic: undefined };
+}
+
 /** Options accepted by {@link loadState}, {@link saveState}, and {@link clearState}. */
 export interface StateOptions {
   /**
