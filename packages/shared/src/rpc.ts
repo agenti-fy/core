@@ -107,6 +107,26 @@ export const AgentStatusResponseSchema = z.object({
 });
 export type AgentStatusResponse = z.infer<typeof AgentStatusResponseSchema>;
 
+/* -------- KB write records -------- */
+
+/**
+ * A single knowledge-base write action surfaced by an agent skill run.
+ * Written by `agentify-kb append` (Phase 2); parsed from `extractArtifacts`
+ * in the agent's live adapter. Fields are intentionally minimal so they
+ * survive coordinator storage in the `artifacts` JSON column.
+ */
+export const KbWriteRecordSchema = z.object({
+  /** Wiki page name, e.g. "KB-Tinkerer" or "KB-Global". */
+  page: z.string().min(1),
+  /** Whether the entry was written to the shared global page or a persona-scoped page. */
+  scope: z.enum(['global', 'persona']),
+  /** Byte length of the appended entry (non-negative integer). */
+  bytes: z.number().int().nonnegative(),
+  /** Git commit SHA of the wiki push, populated when the push succeeded. */
+  sha: z.string().min(1).optional(),
+});
+export type KbWriteRecord = z.infer<typeof KbWriteRecordSchema>;
+
 /* -------- Job result -------- */
 
 export const JobOutcomeSchema = z.enum([
@@ -122,21 +142,39 @@ export type JobOutcome = z.infer<typeof JobOutcomeSchema>;
 
 export const JobArtifactsSchema = z
   .object({
-    plan: z.object({ child_issues: z.array(z.number().int().positive()) }).optional(),
+    plan: z
+      .object({
+        child_issues: z.array(z.number().int().positive()),
+        kb_writes: z.array(KbWriteRecordSchema).optional(),
+      })
+      .optional(),
     implement: z
-      .object({ branch: z.string().min(1), pr_number: z.number().int().positive() })
+      .object({
+        branch: z.string().min(1),
+        pr_number: z.number().int().positive(),
+        kb_writes: z.array(KbWriteRecordSchema).optional(),
+      })
       .optional(),
     review: z
       .object({
         review_id: z.number().int(),
         verdict: z.enum(['approved', 'changes_requested', 'commented']),
+        kb_writes: z.array(KbWriteRecordSchema).optional(),
       })
       .optional(),
     address_review: z
-      .object({ commits_pushed: z.number().int().nonnegative(), rerequested: z.boolean() })
+      .object({
+        commits_pushed: z.number().int().nonnegative(),
+        rerequested: z.boolean(),
+        kb_writes: z.array(KbWriteRecordSchema).optional(),
+      })
       .optional(),
     merge: z
-      .object({ merged: z.boolean(), closed_issue: z.number().int().positive().optional() })
+      .object({
+        merged: z.boolean(),
+        closed_issue: z.number().int().positive().optional(),
+        kb_writes: z.array(KbWriteRecordSchema).optional(),
+      })
       .optional(),
   })
   .partial();
