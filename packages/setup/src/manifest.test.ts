@@ -5,6 +5,8 @@ import {
   buildManifest,
   manifestStartUrl,
   ManifestNameTooLongError,
+  validateGithubLogin,
+  InvalidGithubLoginError,
 } from './manifest.js';
 
 // ---------------------------------------------------------------------------
@@ -212,5 +214,78 @@ describe('manifestStartUrl', () => {
     expect(() =>
       manifestStartUrl({ ownerType: 'org', state: 'abc' }),
     ).toThrow('orgLogin is required');
+  });
+
+  it('throws InvalidGithubLoginError when orgLogin is invalid (contains space)', () => {
+    expect(() =>
+      manifestStartUrl({ ownerType: 'org', orgLogin: 'foo bar', state: 's' }),
+    ).toThrow(InvalidGithubLoginError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateGithubLogin
+// ---------------------------------------------------------------------------
+
+describe('validateGithubLogin', () => {
+  // Valid logins — must NOT throw
+  it.each([
+    ['agenti-fy', 'hyphen in middle'],
+    ['github', 'simple lowercase'],
+    ['Acme-Corp', 'mixed case with hyphen'],
+    ['a', 'single character'],
+    ['a'.repeat(38) + 'z', 'exactly 39 characters'],
+  ])('does not throw for valid login %s (%s)', (login) => {
+    expect(() => validateGithubLogin(login)).not.toThrow();
+  });
+
+  // Invalid logins — must throw InvalidGithubLoginError
+  it.each([
+    ['', 'empty string'],
+    ['a'.repeat(40), 'more than 39 characters'],
+    ['foo bar', 'contains whitespace'],
+    ['foo/bar', 'contains slash'],
+    ['foo.bar', 'contains dot'],
+    ['foo%bar', 'contains percent'],
+    ['foo_bar', 'contains underscore'],
+    ['-foo', 'leading hyphen'],
+    ['foo-', 'trailing hyphen'],
+    ['foo--bar', 'consecutive hyphens'],
+  ])('throws InvalidGithubLoginError for invalid login "%s" (%s)', (login) => {
+    expect(() => validateGithubLogin(login)).toThrow(InvalidGithubLoginError);
+  });
+
+  it('thrown error is an instanceof InvalidGithubLoginError', () => {
+    let caught: unknown;
+    try {
+      validateGithubLogin('bad login!');
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(InvalidGithubLoginError);
+  });
+
+  it('thrown error has .login set to the offending input', () => {
+    const offending = 'foo--bar';
+    let caught: unknown;
+    try {
+      validateGithubLogin(offending);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(InvalidGithubLoginError);
+    expect((caught as InvalidGithubLoginError).login).toBe(offending);
+  });
+
+  it('thrown error .message contains the offending input', () => {
+    const offending = '-leading-hyphen';
+    let caught: unknown;
+    try {
+      validateGithubLogin(offending);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(InvalidGithubLoginError);
+    expect((caught as InvalidGithubLoginError).message).toContain(offending);
   });
 });
