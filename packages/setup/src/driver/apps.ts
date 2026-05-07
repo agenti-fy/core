@@ -113,6 +113,16 @@ export interface AppsDeps {
   state: WizardState;
   /** Injectable I/O streams. Defaults to process.stdin/stdout in production. */
   io: IoStreams;
+  /**
+   * Operator's session passphrase, used to encrypt `pem`, `clientSecret`, and
+   * `webhookSecret` fields in each per-persona checkpoint written to disk.
+   *
+   * Required in v2 of the setup wizard — every checkpoint must be written with
+   * encryption active so that raw PEM material never touches the state file.
+   * The orchestrator in `index.ts` acquires this once at startup (via
+   * {@link getSessionPassphrase}) and threads it straight through here.
+   */
+  passphrase: string;
   /** Override the browser launcher (default: `openInBrowser` from `open.ts`). */
   openInBrowser?: OpenInBrowser;
   /** Override the state writer for per-persona checkpoints (default: `saveState`). */
@@ -189,7 +199,7 @@ async function askRetrySkipAbort(
  *          running state by the {@link run} orchestrator.
  */
 export async function runApps(deps: AppsDeps): Promise<Partial<WizardState>> {
-  const { state, io } = deps;
+  const { state, io, passphrase } = deps;
   const openBrowser: OpenInBrowser =
     deps.openInBrowser ?? ((url) => defaultOpenInBrowser(url).then(() => void 0));
   const saveFn: SaveState = deps.saveState ?? defaultSaveState;
@@ -317,7 +327,7 @@ export async function runApps(deps: AppsDeps): Promise<Partial<WizardState>> {
         coordinator: updatedCoordinator,
         personas: updatedPersonas,
       };
-      await saveFn(stateForSave(checkpointState));
+      await saveFn(stateForSave(checkpointState, passphrase));
     }
   } finally {
     // Always close the server, even on error or PromptCancelled.
