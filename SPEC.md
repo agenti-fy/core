@@ -347,10 +347,11 @@ Any persona is *capable* of any method; persona selection is an editorial choice
 For each `agent:<persona>:<method>` routing label the coordinator finds during a poll:
 
 1. Extract `<persona>` and `<method>` from the combined label.
-2. Find an IDLE registered agent whose `type` matches `<persona>`. If none is IDLE, skip (try next poll).
-3. If multiple IDLE agents share the persona, pick least-recently-dispatched (round-robin).
-4. Insert a `jobs` row with status `dispatched`; the partial unique index on (repo, persona_name, method, target_id) blocks duplicate dispatch.
-5. POST to the agent's `/<method>` endpoint. On 202 → mark `running`. On 409/503 → mark `failed_to_dispatch` and try a different IDLE agent of the same persona.
+2. **FIFO ordering within a repo**: when a poll tick produces multiple eligible routings in the same repo, `dispatchBatch` sorts them by `(target_id ASC, persona_name ASC, method ASC)` before dispatching. Lower GitHub issue/PR numbers were created earlier and almost always carry less rebase debt against `main`; landing them first reduces conflict surface for sibling PRs. The secondary and tertiary keys (`persona_name`, `method`) are tie-breakers that make the order deterministic when the same target carries multiple routings (e.g. a PR labelled `agent:skeptic:review` and `agent:scribe:review`). Across repos, dispatches remain parallel — there is no global FIFO across the installation.
+3. Find an IDLE registered agent whose `type` matches `<persona>`. If none is IDLE, skip (try next poll).
+4. If multiple IDLE agents share the persona, pick least-recently-dispatched (round-robin).
+5. Insert a `jobs` row with status `dispatched`; the partial unique index on (repo, persona_name, method, target_id) blocks duplicate dispatch.
+6. POST to the agent's `/<method>` endpoint. On 202 → mark `running`. On 409/503 → mark `failed_to_dispatch` and try a different IDLE agent of the same persona.
 
 If a referenced persona has **no registered agent at all**, the coordinator applies `needs-human` with a comment explaining the missing persona.
 
