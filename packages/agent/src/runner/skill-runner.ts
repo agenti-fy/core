@@ -15,6 +15,7 @@ import type { AgentState } from '../state.js';
 import type { ClaudeAdapter, SkillRunOutput } from '../claude/adapter.js';
 import type { GitHubAdapter } from '../github/client.js';
 import type { WorktreeManager } from '../git/worktree.js';
+import type { WikiManager, PreparedWiki } from '../kb/wiki.js';
 import type { SoulRef } from '../soul/ref.js';
 import type { AgentMetrics } from '../metrics.js';
 import { modelForMethod, resolveSkill } from '../skills/resolver.js';
@@ -52,6 +53,7 @@ interface RunDeps {
   adapter: ClaudeAdapter;
   github: GitHubAdapter;
   worktreeManager: WorktreeManager;
+  wikiManager: WikiManager;
   state: AgentState;
   logger: Logger;
   /** Optional in tests; production wires it from index.ts. */
@@ -173,9 +175,22 @@ export class SkillRunner {
     // last on GitHub.
     const flipPromise = this.flipToInProgress(req, log);
     let worktreePath: string;
+    // Default to "KB unavailable"; overwritten after a successful wiki prepare.
+    let wiki: PreparedWiki = { cloneDir: null, tokenFile: null };
     try {
       const wt = await this.deps.worktreeManager.prepare(req.repo, req.job_id);
-      await flipPromise;
+      // After the code worktree is ready, run wiki prepare in parallel with the
+      // label flip. Wiki prepare is best-effort: absorb any unexpected throw so
+      // it never poisons the Promise.all and never blocks the run.
+      const wikiPrepare = this.deps.wikiManager.prepare(req.repo, req.job_id).catch((err) => {
+        log.warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          'wiki prepare threw unexpectedly — KB unavailable for this job',
+        );
+        return { cloneDir: null, tokenFile: null } satisfies PreparedWiki;
+      });
+      const [, prepared] = await Promise.all([flipPromise, wikiPrepare]);
+      wiki = prepared;
       worktreePath = wt.path;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -201,16 +216,44 @@ export class SkillRunner {
       personaName: req.persona_name,
     });
 
-    // Hand the model an authenticated `gh` for the duration of this run.
-    // The credential helper inside the worktree authenticates git operations,
-    // but `gh issue create` / `gh pr create` / `gh pr review` need a token
-    // in env. We mint a fresh App installation token (1h-valid, cached) and
-    // expose it as GH_TOKEN. Subprocess-inheritance covers the SDK's Bash
+    // Hand the model an authenticated `gh` and KB context for the duration of
+    // this run. The credential helper inside the worktree authenticates git
+    // operations, but `gh issue create` / `gh pr create` / `gh pr review` need
+    // a token in env. We mint a fresh App installation token (1h-valid, cached)
+    // and expose it as GH_TOKEN. Subprocess-inheritance covers the SDK's Bash
     // tool. The agent processes one job at a time, so mutating process.env
-    // here is safe; we restore it on the way out.
+    // here is safe; we restore everything on the way out.
     const ghToken = await this.deps.worktreeManager.getInstallationToken().catch(() => null);
     const prevGhToken = process.env['GH_TOKEN'];
+    const prevKbCloneDir = process.env['KB_CLONE_DIR'];
+    const prevAgentifyPersona = process.env['AGENTIFY_PERSONA'];
+    const prevAgentifyJobId = process.env['AGENTIFY_JOB_ID'];
+    const prevAgentifyTargetId = process.env['AGENTIFY_TARGET_ID'];
+
     if (ghToken) process.env['GH_TOKEN'] = ghToken;
+    // KB_CLONE_DIR is unset (not empty-string) when the wiki is unavailable.
+    if (wiki.cloneDir !== null) {
+      process.env['KB_CLONE_DIR'] = wiki.cloneDir;
+    } else {
+      delete process.env['KB_CLONE_DIR'];
+    }
+    process.env['AGENTIFY_PERSONA'] = req.persona_name;
+    process.env['AGENTIFY_JOB_ID'] = req.job_id;
+    process.env['AGENTIFY_TARGET_ID'] = String(req.target_id);
+
+    /** Restore all env vars set above to their pre-run state. */
+    const restoreEnv = (): void => {
+      if (prevGhToken === undefined) delete process.env['GH_TOKEN'];
+      else process.env['GH_TOKEN'] = prevGhToken;
+      if (prevKbCloneDir === undefined) delete process.env['KB_CLONE_DIR'];
+      else process.env['KB_CLONE_DIR'] = prevKbCloneDir;
+      if (prevAgentifyPersona === undefined) delete process.env['AGENTIFY_PERSONA'];
+      else process.env['AGENTIFY_PERSONA'] = prevAgentifyPersona;
+      if (prevAgentifyJobId === undefined) delete process.env['AGENTIFY_JOB_ID'];
+      else process.env['AGENTIFY_JOB_ID'] = prevAgentifyJobId;
+      if (prevAgentifyTargetId === undefined) delete process.env['AGENTIFY_TARGET_ID'];
+      else process.env['AGENTIFY_TARGET_ID'] = prevAgentifyTargetId;
+    };
 
     let output;
     try {
@@ -228,8 +271,7 @@ export class SkillRunner {
     } catch (err) {
       // Restore env before downstream cleanup (markNeedsHuman uses Octokit
       // in-process, not gh, but tidiness is cheap).
-      if (prevGhToken === undefined) delete process.env['GH_TOKEN'];
-      else process.env['GH_TOKEN'] = prevGhToken;
+      restoreEnv();
       const message = err instanceof Error ? err.message : String(err);
       log.error({ err: message }, 'adapter threw');
       await this.markNeedsHuman(req, headlineFor('sdk_failure', req.method), message, log);
@@ -238,9 +280,8 @@ export class SkillRunner {
       return;
     }
     // Restore env on the success path too. Subsequent steps (label cleanup,
-    // worktree teardown, putSession) don't need GH_TOKEN.
-    if (prevGhToken === undefined) delete process.env['GH_TOKEN'];
-    else process.env['GH_TOKEN'] = prevGhToken;
+    // worktree teardown, putSession) don't need GH_TOKEN or KB vars.
+    restoreEnv();
 
     // For `merge` jobs, never trust the model's self-reported success — a
     // misbehaving session can hallucinate `{merged: true}` after pushing
@@ -492,6 +533,8 @@ export class SkillRunner {
         'worktree cleanup failed',
       );
     }
+    // Wiki cleanup is best-effort — WikiManager absorbs all errors internally.
+    await this.deps.wikiManager.cleanup(req.repo, req.job_id);
   }
 
   private signature(): string {

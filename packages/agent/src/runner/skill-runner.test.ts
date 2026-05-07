@@ -16,6 +16,7 @@ import type { ClaudeAdapter, SkillRunOptions, SkillRunOutput } from '../claude/a
 import type { CoordinatorClient } from '../coordinator-client.js';
 import type { GitHubAdapter } from '../github/client.js';
 import type { WorktreeManager } from '../git/worktree.js';
+import type { WikiManager, PreparedWiki } from '../kb/wiki.js';
 import { SkillRunner } from './skill-runner.js';
 
 const silentLog: Logger = pino({ level: 'silent' });
@@ -102,6 +103,27 @@ class FakeWorktree {
   }
 }
 
+class FakeWikiManager {
+  /** Returned by prepare(); override per-test to control the KB path. */
+  prepareResult: PreparedWiki = { cloneDir: '/tmp/kb', tokenFile: '/tmp/.token' };
+  /** Override to make prepare() throw — used to test SkillRunner's defensive catch. */
+  prepareImpl: (() => Promise<PreparedWiki>) | null = null;
+  prepareCalls: Array<{ repo: string; job_id: string }> = [];
+  cleanupCalls: Array<{ repo: string; job_id: string }> = [];
+
+  async prepare(repo: string, job_id: string): Promise<PreparedWiki> {
+    this.prepareCalls.push({ repo, job_id });
+    if (this.prepareImpl) return this.prepareImpl();
+    return this.prepareResult;
+  }
+  async cleanup(repo: string, job_id: string): Promise<void> {
+    this.cleanupCalls.push({ repo, job_id });
+  }
+  async getInstallationToken(): Promise<string | null> {
+    return null;
+  }
+}
+
 class FakeAdapter implements ClaudeAdapter {
   next: SkillRunOutput | Error = {
     outcome: 'success',
@@ -133,6 +155,7 @@ interface Deps {
   runner: SkillRunner;
   github: FakeGitHub;
   worktree: FakeWorktree;
+  wiki: FakeWikiManager;
   adapter: FakeAdapter;
   coord: FakeCoordinator;
   state: AgentState;
@@ -143,6 +166,7 @@ function build(): Deps {
   state.setAgentId('agent-1');
   const github = new FakeGitHub();
   const worktree = new FakeWorktree();
+  const wiki = new FakeWikiManager();
   const adapter = new FakeAdapter();
   const coord = new FakeCoordinator();
   const runner = new SkillRunner({
@@ -152,10 +176,11 @@ function build(): Deps {
     adapter,
     github,
     worktreeManager: worktree as unknown as WorktreeManager,
+    wikiManager: wiki as unknown as WikiManager,
     state,
     logger: silentLog,
   });
-  return { runner, github, worktree, adapter, coord, state };
+  return { runner, github, worktree, wiki, adapter, coord, state };
 }
 
 async function runOnce(
@@ -611,6 +636,158 @@ describe('SkillRunner.run', () => {
 
       expect(d.state.getJob('j_1')?.result?.outcome).toBe('success');
       expect(d.github.labels).not.toContain(NEEDS_HUMAN_LABEL);
+    });
+  });
+
+  describe('WikiManager integration', () => {
+    it('wiki prepare is called before adapter.run', async () => {
+      const callOrder: string[] = [];
+      d.wiki.prepareImpl = async () => {
+        callOrder.push('wiki.prepare');
+        return { cloneDir: '/tmp/kb', tokenFile: '/tmp/.token' };
+      };
+      d.adapter.run = async (opts) => {
+        callOrder.push('adapter.run');
+        d.adapter.lastOpts = opts;
+        return { outcome: 'success', sessionId: 'sess-1', artifacts: {} };
+      };
+      d.state.startJob({ id: 'j_1', method: 'plan', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+      await runOnce(d.runner);
+
+      expect(callOrder.indexOf('wiki.prepare')).toBeLessThan(callOrder.indexOf('adapter.run'));
+    });
+
+    it('wiki cleanup is called inside cleanupWorktree after a successful run', async () => {
+      d.state.startJob({ id: 'j_1', method: 'plan', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+      await runOnce(d.runner);
+
+      expect(d.wiki.cleanupCalls).toEqual([{ repo: 'acme/api', job_id: 'j_1' }]);
+    });
+
+    it('wiki cleanup is called even when the adapter throws', async () => {
+      d.adapter.next = new Error('adapter exploded');
+      d.state.startJob({ id: 'j_1', method: 'plan', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+      await runOnce(d.runner);
+
+      expect(d.wiki.cleanupCalls).toEqual([{ repo: 'acme/api', job_id: 'j_1' }]);
+    });
+
+    it('KB_CLONE_DIR and AGENTIFY_* env vars are set during adapter.run and restored after', async () => {
+      d.wiki.prepareResult = { cloneDir: '/workspaces/acme/api/.kb/j_1', tokenFile: '/workspaces/acme/api/.token' };
+      const seen: Record<string, string | undefined> = {};
+      const originalCloneDir = process.env['KB_CLONE_DIR'];
+      const originalPersona = process.env['AGENTIFY_PERSONA'];
+      const originalJobId = process.env['AGENTIFY_JOB_ID'];
+      const originalTargetId = process.env['AGENTIFY_TARGET_ID'];
+
+      // Clear any pre-existing values so baseline is undefined.
+      delete process.env['KB_CLONE_DIR'];
+      delete process.env['AGENTIFY_PERSONA'];
+      delete process.env['AGENTIFY_JOB_ID'];
+      delete process.env['AGENTIFY_TARGET_ID'];
+
+      d.adapter.run = async () => {
+        seen['KB_CLONE_DIR'] = process.env['KB_CLONE_DIR'];
+        seen['AGENTIFY_PERSONA'] = process.env['AGENTIFY_PERSONA'];
+        seen['AGENTIFY_JOB_ID'] = process.env['AGENTIFY_JOB_ID'];
+        seen['AGENTIFY_TARGET_ID'] = process.env['AGENTIFY_TARGET_ID'];
+        return { outcome: 'success', sessionId: 'sess-1', artifacts: {} };
+      };
+      d.state.startJob({ id: 'j_1', method: 'plan', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+      await runOnce(d.runner);
+
+      // Env vars were set during adapter call.
+      expect(seen['KB_CLONE_DIR']).toBe('/workspaces/acme/api/.kb/j_1');
+      expect(seen['AGENTIFY_PERSONA']).toBe('tinkerer');
+      expect(seen['AGENTIFY_JOB_ID']).toBe('j_1');
+      expect(seen['AGENTIFY_TARGET_ID']).toBe('7');
+
+      // Env vars are restored after the run.
+      expect(process.env['KB_CLONE_DIR']).toBeUndefined();
+      expect(process.env['AGENTIFY_PERSONA']).toBeUndefined();
+      expect(process.env['AGENTIFY_JOB_ID']).toBeUndefined();
+      expect(process.env['AGENTIFY_TARGET_ID']).toBeUndefined();
+
+      // Restore original state.
+      if (originalCloneDir !== undefined) process.env['KB_CLONE_DIR'] = originalCloneDir;
+      if (originalPersona !== undefined) process.env['AGENTIFY_PERSONA'] = originalPersona;
+      if (originalJobId !== undefined) process.env['AGENTIFY_JOB_ID'] = originalJobId;
+      if (originalTargetId !== undefined) process.env['AGENTIFY_TARGET_ID'] = originalTargetId;
+    });
+
+    it('KB_CLONE_DIR is unset (not empty-string) when wiki.cloneDir is null', async () => {
+      d.wiki.prepareResult = { cloneDir: null, tokenFile: null };
+      let seenCloneDir: string | undefined = 'sentinel';
+      const originalCloneDir = process.env['KB_CLONE_DIR'];
+      process.env['KB_CLONE_DIR'] = 'pre-existing-value';
+
+      d.adapter.run = async () => {
+        seenCloneDir = process.env['KB_CLONE_DIR'];
+        return { outcome: 'success', sessionId: 'sess-1', artifacts: {} };
+      };
+      d.state.startJob({ id: 'j_1', method: 'plan', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+      await runOnce(d.runner);
+
+      // When cloneDir is null, KB_CLONE_DIR must be unset, not empty-string.
+      expect(seenCloneDir).toBeUndefined();
+      // After the run, KB_CLONE_DIR is restored to the pre-run value.
+      expect(process.env['KB_CLONE_DIR']).toBe('pre-existing-value');
+
+      // Restore original state.
+      if (originalCloneDir === undefined) delete process.env['KB_CLONE_DIR'];
+      else process.env['KB_CLONE_DIR'] = originalCloneDir;
+    });
+
+    it('wiki prepare throwing unexpectedly: run continues, env not polluted, no task_error', async () => {
+      d.wiki.prepareImpl = async () => { throw new Error('wiki exploded'); };
+      let seenCloneDir: string | undefined = 'sentinel';
+      const originalCloneDir = process.env['KB_CLONE_DIR'];
+      delete process.env['KB_CLONE_DIR'];
+
+      d.adapter.run = async () => {
+        seenCloneDir = process.env['KB_CLONE_DIR'];
+        return { outcome: 'success', sessionId: 'sess-1', artifacts: {} };
+      };
+      d.state.startJob({ id: 'j_1', method: 'plan', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+      await runOnce(d.runner);
+
+      // Run must complete successfully despite wiki failure.
+      expect(d.state.getJob('j_1')?.result?.outcome).toBe('success');
+      // KB_CLONE_DIR must be unset (not set to wiki's failing path).
+      expect(seenCloneDir).toBeUndefined();
+      // Env is clean after the run.
+      expect(process.env['KB_CLONE_DIR']).toBeUndefined();
+      // No needs-human label applied.
+      expect(d.github.labels).not.toContain(NEEDS_HUMAN_LABEL);
+
+      // Restore original state.
+      if (originalCloneDir !== undefined) process.env['KB_CLONE_DIR'] = originalCloneDir;
+    });
+
+    it('env vars are restored even when adapter throws', async () => {
+      d.wiki.prepareResult = { cloneDir: '/tmp/kb/j_1', tokenFile: '/tmp/.token' };
+      d.adapter.next = new Error('adapter boom');
+      const originalCloneDir = process.env['KB_CLONE_DIR'];
+      const originalPersona = process.env['AGENTIFY_PERSONA'];
+      delete process.env['KB_CLONE_DIR'];
+      delete process.env['AGENTIFY_PERSONA'];
+
+      d.state.startJob({ id: 'j_1', method: 'plan', repo: 'acme/api', target_id: 7, started_at: Date.now() });
+
+      await runOnce(d.runner);
+
+      expect(process.env['KB_CLONE_DIR']).toBeUndefined();
+      expect(process.env['AGENTIFY_PERSONA']).toBeUndefined();
+
+      // Restore original state.
+      if (originalCloneDir !== undefined) process.env['KB_CLONE_DIR'] = originalCloneDir;
+      if (originalPersona !== undefined) process.env['AGENTIFY_PERSONA'] = originalPersona;
     });
   });
 });

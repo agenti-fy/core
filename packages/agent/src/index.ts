@@ -117,8 +117,8 @@ async function main(): Promise<void> {
   const adapter = pickClaudeAdapter(config, logger);
   const github = createGitHubAdapter(config, logger);
   const worktreeManager = new WorktreeManager(config, soulRef, logger);
-  // Share the token cache so both managers use a single GitHub App auth call.
-  // WikiManager is instantiated here; wiring into SkillRunner is tracked in #257.
+  // Share the token cache so both managers use a single GitHub App auth call
+  // (DI from #251): one cached token serves both code-repo and wiki operations.
   const wikiManager = new WikiManager(config, soulRef, logger, worktreeManager.getTokenCache());
   const metrics = new AgentMetrics(initialSoul.frontmatter.name);
   const runner = new SkillRunner({
@@ -128,6 +128,7 @@ async function main(): Promise<void> {
     adapter,
     github,
     worktreeManager,
+    wikiManager,
     state,
     logger,
     metrics,
