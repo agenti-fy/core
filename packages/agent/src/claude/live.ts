@@ -41,14 +41,19 @@ const ALWAYS_DENIED = ['Task', 'WebFetch', 'WebSearch'] as const;
 // Bash commands allowed for plan / review. These methods only read code and
 // post GitHub comments — they must not push commits or modify worktree files.
 // git rev-parse is included because review.md uses it to verify HEAD SHA.
+// agentify-kb entries allow plan/review to write KB entries via the controlled
+// CLI helper only; the absolute-path variant guards against $PATH resolution
+// quirks inside the SDK subprocess.
 const PLAN_REVIEW_BASH_ALLOW = [
-  'Bash(gh *)',            // gh issue/pr subcommands
-  'Bash(git log*)',        // history inspection
-  'Bash(git show*)',       // commit inspection
-  'Bash(git diff*)',       // diff inspection
-  'Bash(git rev-parse*)',  // HEAD SHA verification (review.md step 1)
-  'Bash(ls*)',             // directory listing
-  'Bash(cat*)',            // file reading + /tmp heredoc writes (plan.md step 5)
+  'Bash(gh *)',                           // gh issue/pr subcommands
+  'Bash(git log*)',                       // history inspection
+  'Bash(git show*)',                      // commit inspection
+  'Bash(git diff*)',                      // diff inspection
+  'Bash(git rev-parse*)',                 // HEAD SHA verification (review.md step 1)
+  'Bash(ls*)',                            // directory listing
+  'Bash(cat*)',                           // file reading + /tmp heredoc writes (plan.md step 5)
+  'Bash(agentify-kb*)',                   // KB write/read via CLI helper
+  'Bash(/usr/local/bin/agentify-kb*)',    // absolute-path variant for $PATH robustness
 ] as const;
 
 /**

@@ -178,6 +178,26 @@ describe('LiveClaudeAdapter.buildSdkOptions', () => {
     }
   });
 
+  it('plan and review include agentify-kb in allowedTools (both relative and absolute path)', () => {
+    const KB_ENTRIES = ['Bash(agentify-kb*)', 'Bash(/usr/local/bin/agentify-kb*)'];
+    for (const method of ['plan', 'review'] as const) {
+      const opts = LiveClaudeAdapter.buildSdkOptions({ ...baseOpts, method }, ctx);
+      const allowed = opts['allowedTools'] as string[];
+      expect(allowed, `method=${method} should include Bash(agentify-kb*)`).toContain('Bash(agentify-kb*)');
+      expect(allowed, `method=${method} should include Bash(/usr/local/bin/agentify-kb*)`).toContain('Bash(/usr/local/bin/agentify-kb*)');
+      expect(allowed, `method=${method}`).toEqual(expect.arrayContaining(KB_ENTRIES));
+    }
+  });
+
+  it('implement, address_review, merge do NOT have agentify-kb in allowedTools (full Bash available)', () => {
+    // Full-Bash methods have no allowedTools restriction at all — agentify-kb is
+    // reachable implicitly, and the absence of an allowlist is verified separately.
+    for (const method of ['implement', 'address_review', 'merge'] as const) {
+      const opts = LiveClaudeAdapter.buildSdkOptions({ ...baseOpts, method }, ctx);
+      expect(opts['allowedTools'], `method=${method} should have no allowedTools`).toBeUndefined();
+    }
+  });
+
   it('implement, address_review, merge have no Bash allowlist (full Bash available)', () => {
     for (const method of ['implement', 'address_review', 'merge'] as const) {
       const opts = LiveClaudeAdapter.buildSdkOptions({ ...baseOpts, method }, ctx);
