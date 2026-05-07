@@ -80,8 +80,8 @@ export interface PreparedWiki {
  *   `my-custom` → `My-Custom`
  *   `my_agent`  → `My-Agent`
  *
- * Internal helper, but intentionally not un-exported so callers that hold
- * a raw string can pascal-case it without reimplementing the logic.
+ * Internal helper — callers should use `kbPersonaTitle` /
+ * `kbPersonaPageFilename` for SOUL-aware casing.
  */
 function toPascalCase(s: string): string {
   return s
