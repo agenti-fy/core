@@ -294,6 +294,96 @@ describe('dispatchBatch', () => {
     store.close();
   });
 
+  it('sorts items within a repo bucket by target_id ASC: lowest id dispatched first', async () => {
+    // Single IDLE tinkerer + three items in one repo arriving out-of-order.
+    // After the sort, target 2 should be the first (and only) call made.
+    const a = regAgent(store);
+    client.push({ kind: 'accepted', data: { job_id: 'x', agent_id: a.agent_id, status: 'BUSY' } });
+
+    await dispatchBatch(
+      [
+        workItem({ target_id: 7 }),
+        workItem({ target_id: 2 }),
+        workItem({ target_id: 5 }),
+      ],
+      { store, agentClient: client, logger: silentLog },
+    );
+
+    expect(client.calls).toHaveLength(1);
+    expect((client.calls[0]!.body as { job_id: string; id: number }).id).toBe(2);
+    store.close();
+  });
+
+  it('sorts mixed-persona items by target_id ASC: lower target dispatched before higher', async () => {
+    // skeptic + scribe agents, items at target_id [5, 5, 3]. After sort the
+    // target:3 item comes first; the two target:5 items follow.
+    const skeptic = store.registerAgent({
+      name: 'skeptic-1',
+      type: 'skeptic',
+      version: '0.1.0',
+      url: 'http://skeptic-1:8080',
+      supported_methods: ['review'],
+    });
+    const scribe = store.registerAgent({
+      name: 'scribe-1',
+      type: 'scribe',
+      version: '0.1.0',
+      url: 'http://scribe-1:8080',
+      supported_methods: ['review'],
+    });
+    client.push({ kind: 'accepted', data: { job_id: 'sk3', agent_id: skeptic.agent_id, status: 'BUSY' } });
+    client.push({ kind: 'accepted', data: { job_id: 'sc5', agent_id: scribe.agent_id, status: 'BUSY' } });
+
+    await dispatchBatch(
+      [
+        workItem({ persona: 'skeptic', persona_name: 'skeptic', method: 'review', target_id: 5 }),
+        workItem({ persona: 'scribe',  persona_name: 'scribe',  method: 'review', target_id: 5 }),
+        workItem({ persona: 'skeptic', persona_name: 'skeptic', method: 'review', target_id: 3 }),
+      ],
+      { store, agentClient: client, logger: silentLog },
+    );
+
+    // target:3 must appear before any target:5 call
+    const ids = client.calls.map((c) => (c.body as { job_id: string; id: number }).id);
+    expect(ids[0]).toBe(3);
+    expect(ids.indexOf(5)).toBeGreaterThan(0);
+    store.close();
+  });
+
+  it('sorts per-repo independently: a/x sorts by target_id without regard to b/y', async () => {
+    // Three tinkerer agents cover all three dispatches. Input order has a/x
+    // items out-of-order ([9, 2]); after per-bucket sort they become [2, 9].
+    const a1 = regAgent(store, 'tinkerer-1');
+    const a2 = regAgent(store, 'tinkerer-2');
+    const a3 = regAgent(store, 'tinkerer-3');
+    client.push({ kind: 'accepted', data: { job_id: 'j1', agent_id: a1.agent_id, status: 'BUSY' } });
+    client.push({ kind: 'accepted', data: { job_id: 'j2', agent_id: a2.agent_id, status: 'BUSY' } });
+    client.push({ kind: 'accepted', data: { job_id: 'j3', agent_id: a3.agent_id, status: 'BUSY' } });
+
+    await dispatchBatch(
+      [
+        workItem({ repo: 'a/x', target_id: 9 }),
+        workItem({ repo: 'b/y', target_id: 1 }),
+        workItem({ repo: 'a/x', target_id: 2 }),
+      ],
+      { store, agentClient: client, logger: silentLog },
+    );
+
+    expect(client.calls).toHaveLength(3);
+    type BodyShape = { job_id: string; repo: string; id: number };
+    // Within a/x, target:2 must have been dispatched before target:9.
+    const axIds = client.calls
+      .filter((c) => (c.body as unknown as BodyShape).repo === 'a/x')
+      .map((c) => (c.body as unknown as BodyShape).id);
+    expect(axIds).toEqual([2, 9]);
+    // b/y dispatched its one item independently.
+    const byIds = client.calls
+      .filter((c) => (c.body as unknown as BodyShape).repo === 'b/y')
+      .map((c) => (c.body as unknown as BodyShape).id);
+    expect(byIds).toEqual([1]);
+    store.close();
+  });
+
   it('serializes same-repo dispatches: second item gets no_agent once first has flipped to BUSY', async () => {
     const a = regAgent(store);
     // Only one accept available; second same-repo dispatch should find no IDLE agent.
