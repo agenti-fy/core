@@ -90,6 +90,13 @@ describe('validateKbPageName — negative (rejected names)', () => {
   it('rejects KB- alone (body must have ≥ 1 char)', () => {
     expect(() => validateKbPageName('KB-')).toThrow(/refusing invalid page name/);
   });
+
+  it('thrown message does not start with the legacy "kb cli:" prefix', () => {
+    let caught: Error | null = null;
+    try { validateKbPageName('../escape'); } catch (e) { caught = e as Error; }
+    expect(caught).not.toBeNull();
+    expect(caught!.message).not.toMatch(/^kb cli:/);
+  });
 });
 
 describe('validateKbPageName — boundary (stem length)', () => {
