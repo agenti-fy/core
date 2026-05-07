@@ -19,8 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Dispatch order: within each repo bucket, `dispatchBatch` now sorts items by `(target_id ASC, persona_name ASC, method ASC)` before dispatching, so older issues/PRs (lower IDs) win the available agent first and sibling PRs accumulate less rebase debt against `main`. Closes #403 (refs #402).
-- Document FIFO dispatch ordering in `SPEC.md §8.3`: new bullet (item 2) describes the per-repo ascending `target_id` sort, the rationale, the deterministic tie-breaker keys, and the no-global-FIFO note across repos. Closes #404 (refs #402).
+- Dispatch order: within each repo bucket, `dispatchBatch` now sorts items by `(method-priority DESC, target_id ASC, persona_name ASC)` — `merge > address_review > review > implement > plan` drains lifecycle-late in-flight work before starting lifecycle-early work, so merge-ready changes land sooner and sibling PRs accumulate less rebase debt against `main`; within a method, older issues/PRs (lower IDs) win the available agent first. Closes #403, #410 (refs #402, #408).
+- Document priority-first dispatch ordering in `SPEC.md §8.3` and `packages/coordinator/README.md`: updated bullet (item 2) describes the `(method-priority DESC, target_id ASC, persona_name ASC)` tuple, the lifecycle-drain rationale, the deterministic tie-breaker keys, and the no-global-ordering note across repos. Closes #404 (refs #402, #408, #410).
 - Align `SPEC.md §23.5 step 5` to reference `KB_WRITE_RETRY_MAX` (default 3) instead of the hardcoded literal "3", adding "exponential backoff" phrasing to match `docs/knowledge-base.md`. Closes the drift flagged by #361; traces back to the env var shipped in #354 and the plan in #371.
 - Align `KB_WRITES_MAX_MSG` wording from "per job" to "per slot" in `packages/shared/src/rpc.ts`, matching the updated `SPEC.md §6.4` wording introduced in PR #348 (parent issue #357).
 - Lift the `kb_writes` cap (64) and its error message into the exported `KB_WRITES_MAX` / `KB_WRITES_MAX_MSG` constants in `packages/shared/src/rpc.ts`. Removes 5× duplication of the literal flagged in PR #291. Closes #336.

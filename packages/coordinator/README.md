@@ -53,7 +53,7 @@ WAL-mode SQLite via `better-sqlite3`. Owns all schema definitions, migration run
 4. Marks the agent BUSY, inserts a `jobs` row with `status='dispatched'`, and POSTs to `agent_url/<method>`.
 5. Records the outcome: `202 accepted` → `running`; `4xx rejected` → `failed_to_dispatch` (agent reverts to idle); transport error → stays `dispatched` for the completion-poller to reconcile.
 
-Items for the same repo are serialised; items across repos run in parallel. Within a repo bucket, items are dispatched in `(target_id, persona_name, method)` ascending order so older targets are worked first.
+Items for the same repo are serialised; items across repos run in parallel. Within a repo bucket, items are dispatched in `(method-priority DESC, target_id ASC, persona_name ASC)` order — lifecycle-late methods (`merge`, `address_review`) drain before lifecycle-early ones (`plan`, `implement`), and older targets (lower IDs) win the tiebreaker within a method (#408).
 
 ### `src/poller/`
 
