@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rename, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import pino from 'pino';
 import type { Logger } from 'pino';
@@ -21,6 +21,7 @@ import type { ParsedSoul } from '@agentify/shared';
 import { SoulRef } from '../soul/ref.js';
 import { WikiManager, kbPersonaTitle, kbPersonaPageFilename } from './wiki.js';
 import type { Config } from '../config.js';
+import type { InstallationTokenCache } from '../git/worktree.js';
 
 // ── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -473,6 +474,169 @@ describe('prepare — kbEnabled=false', () => {
 
     expect(result).toEqual({ cloneDir: null, tokenFile: null });
     expect(mockRunGit).not.toHaveBeenCalled();
+  });
+});
+
+// ── Token-file helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Build a minimal duck-typed token-cache stub whose `ensureFile` performs
+ * the real atomic write (tmp + rename, mode 0600). This lets wiki token-file
+ * tests exercise the actual file-system path without depending on the real
+ * InstallationTokenCache (which is mocked away via vi.mock above).
+ */
+function makeStubTokenCache(token: string): InstallationTokenCache {
+  return {
+    async get() {
+      return token;
+    },
+    async ensureFile(tokenFilePath: string) {
+      const tmp = `${tokenFilePath}.tmp`;
+      await writeFile(tmp, token, { mode: 0o600 });
+      await rename(tmp, tokenFilePath);
+    },
+  } as unknown as InstallationTokenCache;
+}
+
+// ── prepare — token file (order-independence, #337/#345) ──────────────────────
+
+describe('prepare — token file written before first runGit call (order-independence)', () => {
+  let workspacesDir: string;
+
+  beforeEach(async () => {
+    workspacesDir = await mkdtemp(join(tmpdir(), 'wiki-token-order-test-'));
+    vi.clearAllMocks();
+    // Default mock: return success for all git calls, and physically create
+    // the worktree directory when `git worktree add` is called — this lets
+    // ensurePages write its seed files so _prepare can complete successfully.
+    mockRunGit.mockImplementation(async (args: string[]) => {
+      if (Array.isArray(args) && args.includes('worktree') && args.includes('add')) {
+        const addIdx = args.indexOf('add');
+        const worktreePath = addIdx + 1 < args.length ? args[addIdx + 1] : undefined;
+        if (worktreePath) {
+          await mkdir(worktreePath, { recursive: true });
+        }
+      }
+      return { stdout: '', stderr: '' };
+    });
+  });
+
+  afterEach(async () => {
+    await rm(workspacesDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  it('token file exists with mode 0600 before the first runGit call is made', async () => {
+    const repo = 'owner/repo';
+    const job_id = 'job1';
+    const repoDir = join(workspacesDir, 'owner', 'repo');
+    const tokenFile = join(repoDir, '.token');
+
+    // Capture the filesystem state at the instant the first runGit call fires.
+    let tokenExistsAtFirstCall: boolean | undefined;
+    let tokenModeAtFirstCall: number | undefined;
+
+    mockRunGit.mockImplementation(async (args: string[]) => {
+      // Capture state on the very first call only.
+      if (tokenExistsAtFirstCall === undefined) {
+        try {
+          const s = await stat(tokenFile);
+          tokenExistsAtFirstCall = true;
+          tokenModeAtFirstCall = s.mode;
+        } catch {
+          tokenExistsAtFirstCall = false;
+        }
+      }
+      // For worktree add: create the directory so ensurePages can write pages.
+      if (Array.isArray(args) && args.includes('worktree') && args.includes('add')) {
+        const addIdx = args.indexOf('add');
+        const worktreePath = addIdx + 1 < args.length ? args[addIdx + 1] : undefined;
+        if (worktreePath) {
+          await mkdir(worktreePath, { recursive: true });
+        }
+      }
+      return { stdout: '', stderr: '' };
+    });
+
+    const tokenCache = makeStubTokenCache('fake-token-xyz');
+    const config = makeConfig(workspacesDir);
+    const mgr = new WikiManager(config, new SoulRef(makeSoul()), pino({ level: 'silent' }), tokenCache);
+
+    await mgr.prepare(repo, job_id);
+
+    // Token file must have been written by tokenCache.ensureFile() BEFORE any
+    // git operation was attempted. This is the core order-independence guarantee
+    // from #337/#345: WikiManager no longer relies on WorktreeManager having run
+    // first for the same repo.
+    expect(tokenExistsAtFirstCall).toBe(true);
+    expect(tokenModeAtFirstCall !== undefined && (tokenModeAtFirstCall & 0o777)).toBe(0o600);
+  });
+
+  it('no token file is written when tokenCache is null (DISABLE_GITHUB path)', async () => {
+    const repo = 'owner/repo';
+    const job_id = 'job1';
+    const repoDir = join(workspacesDir, 'owner', 'repo');
+    const tokenFile = join(repoDir, '.token');
+
+    // tokenCache=null: the if (this.tokenCache) guard skips ensureFile().
+    const config = makeConfig(workspacesDir);
+    const mgr = new WikiManager(config, new SoulRef(makeSoul()), pino({ level: 'silent' }), null);
+
+    await mgr.prepare(repo, job_id);
+
+    // Verify that no token file was written to disk at all.
+    let tokenFileExists = false;
+    try {
+      await stat(tokenFile);
+      tokenFileExists = true;
+    } catch {
+      // expected
+    }
+    expect(tokenFileExists).toBe(false);
+  });
+
+  it('kbEnabled=false returns null immediately without writing a token file', async () => {
+    const config = makeConfig(workspacesDir);
+    config.kbEnabled = false;
+    const tokenCache = makeStubTokenCache('should-not-be-written');
+    const mgr = new WikiManager(config, new SoulRef(makeSoul()), pino({ level: 'silent' }), tokenCache);
+
+    const result = await mgr.prepare('owner/repo', 'job1');
+
+    expect(result).toEqual({ cloneDir: null, tokenFile: null });
+    expect(mockRunGit).not.toHaveBeenCalled();
+
+    // The fast-exit at wiki.ts:90-92 returns before any ensureFile call.
+    const tokenFile = join(workspacesDir, 'owner', 'repo', '.token');
+    let tokenFileExists = false;
+    try {
+      await stat(tokenFile);
+      tokenFileExists = true;
+    } catch {
+      // expected
+    }
+    expect(tokenFileExists).toBe(false);
+  });
+
+  it('two prepare() calls for different job_ids are idempotent — token content is the same on both writes', async () => {
+    const repo = 'owner/repo';
+    const config = makeConfig(workspacesDir);
+    const tokenCache = makeStubTokenCache('stable-token');
+    const mgr = new WikiManager(config, new SoulRef(makeSoul()), pino({ level: 'silent' }), tokenCache);
+
+    // Both prepares should complete (mocked runGit + worktree dir creation).
+    await mgr.prepare(repo, 'job1');
+    await mgr.prepare(repo, 'job2');
+
+    // The token file must exist and contain the same token after both writes.
+    // ensureFile is last-writer-wins with identical content — no corruption.
+    const tokenFile = join(workspacesDir, 'owner', 'repo', '.token');
+    const content = await readFile(tokenFile, 'utf8');
+    expect(content).toBe('stable-token');
+
+    // Mode must still be 0600 after the second write.
+    const s = await stat(tokenFile);
+    expect(s.mode & 0o777).toBe(0o600);
   });
 });
 
