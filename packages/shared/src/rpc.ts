@@ -112,7 +112,7 @@ export type AgentStatusResponse = z.infer<typeof AgentStatusResponseSchema>;
 /** Maximum number of KB write records allowed per job slot. */
 export const KB_WRITES_MAX = 64;
 /** Error message emitted by Zod when the per-slot `kb_writes` cap is exceeded. */
-export const KB_WRITES_MAX_MSG = `kb_writes capped at ${KB_WRITES_MAX} entries per job`;
+export const KB_WRITES_MAX_MSG = `kb_writes capped at ${KB_WRITES_MAX} entries per slot`;
 
 /**
  * A single knowledge-base write action surfaced by an agent skill run.
