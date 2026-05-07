@@ -383,7 +383,7 @@ function makeNffError(): Error {
 // ── C1: append — happy path ───────────────────────────────────────────────────
 
 describe('cmdAppend — happy path (builtin persona: tinkerer)', () => {
-  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn<typeof process, 'exit'>>;
   let stderrChunks: string[];
   let stdoutChunks: string[];
 
@@ -716,7 +716,7 @@ describe('cmdAppend — page-missing rejected', () => {
 // ── C6: push conflict + rebase + retry success ────────────────────────────────
 
 describe('cmdAppend — push conflict + rebase + retry success', () => {
-  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn<typeof process, 'exit'>>;
   let stderrChunks: string[];
   let stdoutChunks: string[];
 
@@ -906,7 +906,7 @@ describe('cmdAppend — push retries exhausted', () => {
 // ── C8: read — prints page contents ──────────────────────────────────────────
 
 describe('cmdRead — prints page contents verbatim to stdout', () => {
-  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn<typeof process, 'exit'>>;
   let stdoutChunks: string[];
 
   beforeEach(() => {
@@ -967,7 +967,7 @@ describe('cmdRead — prints page contents verbatim to stdout', () => {
 // ── C9: list — prints filenames sorted ───────────────────────────────────────
 
 describe('cmdList — prints page filenames sorted alphabetically', () => {
-  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn<typeof process, 'exit'>>;
   let stdoutChunks: string[];
 
   beforeEach(() => {
