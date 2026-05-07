@@ -1107,7 +1107,7 @@ The helper:
 2. Stamps it with the current date, source link (`issue #N` or `PR #N`), and persona signature.
 3. Prepends the entry (newest-first) to the appropriate page under `$KB_CLONE_DIR`.
 4. Runs `git add / commit / push --force-with-lease` in the wiki worktree.
-5. On non-fast-forward, retries up to 3 times with `git pull --rebase` + push, with backoff. Failures beyond 3 retries emit `task_error` for the KB write only; the underlying skill job is unaffected.
+5. On non-fast-forward, retries up to `KB_WRITE_RETRY_MAX` (default 3) times with `git pull --rebase` + push, with exponential backoff. Failures beyond the retry max emit `task_error` for the KB write only; the underlying skill job is unaffected.
 
 Free-form `git commit` to the wiki is permitted for operator maintenance but is not an agent-facing API.
 
