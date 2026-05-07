@@ -88,12 +88,21 @@ const ConfigSchema = z.object({
 
   /**
    * Name of the shared wiki page visible to every persona on the repo.
-   * Must not contain a path separator (`/`) or the `.md` suffix — the
+   * Restricted to alphanumeric characters, spaces, underscores, and dashes so
+   * any accepted value is safe to pass into git argv, filesystem paths, commit
+   * messages, and GitHub wiki slugs without per-call-site re-escaping.
+   * See #264 for the full security rationale and Option-A decision record.
+   * The `.md` suffix refine is kept separate so its error message stays specific.
    * WikiManager appends `.md` itself.
    */
   kbGlobalPage: z
     .string()
-    .refine((s) => !s.includes('/'), 'KB_GLOBAL_PAGE must not contain slashes')
+    // #264 — tightened from loose refine checks to a strict allowlist regex so
+    // shell metacharacters, path separators, and leading dots are impossible.
+    .regex(
+      /^[A-Za-z0-9 _-]+$/,
+      'KB_GLOBAL_PAGE must contain only alphanumeric characters, spaces, underscores, and dashes',
+    )
     .refine((s) => !s.endsWith('.md'), 'KB_GLOBAL_PAGE must not end with .md')
     .default('KB-Global'),
 
