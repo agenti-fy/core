@@ -3,11 +3,11 @@
  * bin.ts — agentify-setup entry point.
  *
  * Parses argv via cli.ts, short-circuits for --help / --version, then
- * dispatches to runCli().  The real wizard orchestration (run()) lands in
- * a follow-up issue; for now runCli() logs the parsed args and exits 0.
+ * dispatches to run() (the wizard orchestrator).
  */
 import { readPackageVersion } from '@agentify/shared';
-import { parseArgs, CliError, type CliArgs } from './cli.js';
+import { parseArgs, CliError } from './cli.js';
+import { run } from './index.js';
 
 // dist/bin.js → .. → setup package root
 const VERSION = readPackageVersion(import.meta.url, 1);
@@ -40,19 +40,9 @@ function printHelp(): void {
   );
 }
 
-// ── runCli ────────────────────────────────────────────────────────────────────
-
-/**
- * Thin dispatcher.  The real wizard logic (run()) lands in a follow-up task.
- * For now, pretty-print the parsed arguments so the caller can verify wiring.
- */
-async function runCli(args: CliArgs): Promise<void> {
-  process.stdout.write(JSON.stringify(args, null, 2) + '\n');
-}
-
 // ── Entry ─────────────────────────────────────────────────────────────────────
 
-let parsed: CliArgs;
+let parsed;
 try {
   parsed = parseArgs(process.argv.slice(2));
 } catch (err) {
@@ -73,5 +63,5 @@ if (parsed.showVersion) {
   process.exit(0);
 }
 
-await runCli(parsed);
-process.exit(0);
+const exitCode = await run(parsed);
+process.exit(exitCode);
