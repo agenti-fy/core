@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { resolveSkill, SECURITY_PREAMBLE, InvalidPersonaNameError } from './resolver.js';
 import type { ParsedSoul } from '@agentify/shared';
@@ -497,4 +500,36 @@ describe('resolveSkill — KB template variables', () => {
     expect(result.skillPrompt).not.toContain('{{kb_global_page}}');
     expect(result.skillPrompt).not.toContain('{{kb_persona_page}}');
   });
+});
+
+describe('default skill prompts — kb_clone_dir stable-template contract', () => {
+  // Mirror the path-resolution pattern used in resolver.ts so the test works
+  // under vitest and after a build without hard-coding any file names.
+  const testDir = dirname(fileURLToPath(import.meta.url));
+  const defaultsDir = join(testDir, 'defaults');
+  const mdFiles = readdirSync(defaultsDir).filter((f: string) => f.endsWith('.md'));
+
+  // Allowed compositions are:
+  //   {{kb_clone_dir}}/{{kb_global_page}}
+  //   {{kb_clone_dir}}/{{kb_persona_page}}
+  // Standalone {{kb_clone_dir}} NOT followed by '/' is also allowed (guard / presence-check pattern).
+  // Any other suffix — e.g. {{kb_clone_dir}}/wiki — embeds a per-job path into the stable
+  // template section, collapsing the prompt-cache hit rate to ~0.
+  // See SPEC.md §23.8 ("Skill integration") for the stable-template composition constraint.
+  const VIOLATION_RE = /\{\{kb_clone_dir\}\}\/(?!\{\{kb_(global|persona)_page\}\})/g;
+
+  it.each(mdFiles)(
+    '%s does not violate the kb_clone_dir stable-template contract',
+    (filename: string) => {
+      const content = readFileSync(join(defaultsDir, filename), 'utf8');
+      const matches = [...content.matchAll(VIOLATION_RE)];
+      const failureMessage =
+        `${filename}: {{kb_clone_dir}}/ is followed by an unsupported suffix.\n` +
+        `Offending substrings: ${matches.map((m) => JSON.stringify(m[0])).join(', ')}\n` +
+        `Allowed compositions: {{kb_clone_dir}}/{{kb_global_page}} or {{kb_clone_dir}}/{{kb_persona_page}}.\n` +
+        `Standalone {{kb_clone_dir}} (not followed by /) is also allowed (guard/presence-check pattern).\n` +
+        `See SPEC.md §23.8 ("Skill integration") for the stable-template composition constraint.`;
+      expect(matches, failureMessage).toHaveLength(0);
+    },
+  );
 });
