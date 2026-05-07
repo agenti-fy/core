@@ -104,7 +104,7 @@ For each App the wizard:
 
 Permissions set automatically via the manifest (matching
 [`README.md` § GitHub App setup](../README.md#github-app-setup)):
-**Contents R/W, Issues R/W, Pull requests R/W, Metadata R**.
+**Contents R/W, Issues R/W, Pull requests R/W, Metadata R, Wiki R/W**.
 
 ### 3 — Anthropic auth + tunables
 
