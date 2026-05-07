@@ -8,10 +8,12 @@ import {
   loadState,
   saveState,
   clearState,
+  stateForSave,
+  decryptStateOnLoad,
   type WizardState,
   type PersonaCreds,
 } from './state.js';
-import { type EncryptedValue } from './crypto.js';
+import { type EncryptedValue, EncryptedValueSchema, DecryptError } from './crypto.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -426,5 +428,75 @@ describe('concurrent saveState calls', () => {
     const final = await loadState('race', { dir: tmpDir });
     expect(final).not.toBeNull();
     expect(final?.prefix).toBe('race');
+  });
+});
+
+// ── stateForSave + decryptStateOnLoad — encryption surface ────────────────────
+
+describe('stateForSave + decryptStateOnLoad — encryption surface', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await makeTmpDir();
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('round-trip: stateForSave encrypts then decryptStateOnLoad recovers credentials', () => {
+    const encrypted = stateForSave(FULL_STATE, 'test-pass-12chars');
+
+    // All three sensitive fields on coordinator must be EncryptedValue objects.
+    expect(EncryptedValueSchema.safeParse(encrypted.coordinator!.pem).success).toBe(true);
+    expect(EncryptedValueSchema.safeParse(encrypted.coordinator!.clientSecret).success).toBe(true);
+    expect(EncryptedValueSchema.safeParse(encrypted.coordinator!.webhookSecret).success).toBe(true);
+
+    // Same for every populated persona.
+    for (const creds of Object.values(encrypted.personas)) {
+      if (!creds) continue;
+      expect(EncryptedValueSchema.safeParse(creds.pem).success).toBe(true);
+      expect(EncryptedValueSchema.safeParse(creds.clientSecret).success).toBe(true);
+      expect(EncryptedValueSchema.safeParse(creds.webhookSecret).success).toBe(true);
+    }
+
+    // Decrypt and verify every plaintext credential is recovered.
+    const decrypted = decryptStateOnLoad(encrypted, 'test-pass-12chars');
+    expect(decrypted.coordinator!.pem).toBe(SAMPLE_CREDS.pem);
+    expect(decrypted.coordinator!.clientSecret).toBe(SAMPLE_CREDS.clientSecret);
+    expect(decrypted.coordinator!.webhookSecret).toBe(SAMPLE_CREDS.webhookSecret);
+  });
+
+  it('loadState throws when state has encrypted fields but no passphrase is supplied', async () => {
+    await saveState(stateForSave(FULL_STATE, 'test-pass-12chars'), { dir: tmpDir });
+
+    const expectedPath = path.join(tmpDir, `setup-${FULL_STATE.prefix}.json`);
+    await expect(loadState(FULL_STATE.prefix, { dir: tmpDir })).rejects.toThrow(/passphrase/);
+    await expect(loadState(FULL_STATE.prefix, { dir: tmpDir })).rejects.toThrow(expectedPath);
+  });
+
+  it('stateForSave is idempotent: second pass leaves already-encrypted fields untouched', () => {
+    const once = stateForSave(FULL_STATE, 'test-pass-12chars');
+    const twice = stateForSave(once, 'test-pass-12chars');
+
+    // Fields in `twice` must still be EncryptedValues, not double-encrypted.
+    expect(EncryptedValueSchema.safeParse(twice.coordinator!.pem).success).toBe(true);
+    expect(EncryptedValueSchema.safeParse(twice.coordinator!.clientSecret).success).toBe(true);
+    expect(EncryptedValueSchema.safeParse(twice.coordinator!.webhookSecret).success).toBe(true);
+
+    // Decryption of `twice` must still recover the original plaintext credentials.
+    const decrypted = decryptStateOnLoad(twice, 'test-pass-12chars');
+    expect(decrypted.coordinator!.pem).toBe(SAMPLE_CREDS.pem);
+    expect(decrypted.coordinator!.clientSecret).toBe(SAMPLE_CREDS.clientSecret);
+    expect(decrypted.coordinator!.webhookSecret).toBe(SAMPLE_CREDS.webhookSecret);
+
+    // The second pass must be a true no-op: both results are deeply equal.
+    expect(twice).toEqual(once);
+  });
+
+  it('decryptStateOnLoad with wrong passphrase throws DecryptError', () => {
+    // Sibling integration test in index.test.ts (issue #494) covers the same property through loadState.
+    const encrypted = stateForSave(FULL_STATE, 'right-pass-12char');
+    expect(() => decryptStateOnLoad(encrypted, 'wrong-pass-12char')).toThrow(DecryptError);
   });
 });
