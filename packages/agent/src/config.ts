@@ -80,6 +80,39 @@ const ConfigSchema = z.object({
    */
   disableGithub: boolFlag(false),
 
+  // ── Knowledge base (KB) config ───────────────────────────────────────────
+  // Boot-only (not hot-reloadable) — mirrors credentials / coordinatorUrl.
+
+  /** Whether the knowledge-base feature is active. */
+  kbEnabled: boolFlag(true),
+
+  /**
+   * Name of the shared wiki page visible to every persona on the repo.
+   * Must not contain a path separator (`/`) or the `.md` suffix — the
+   * WikiManager appends `.md` itself.
+   */
+  kbGlobalPage: z
+    .string()
+    .refine((s) => !s.includes('/'), 'KB_GLOBAL_PAGE must not contain slashes')
+    .refine((s) => !s.endsWith('.md'), 'KB_GLOBAL_PAGE must not end with .md')
+    .default('KB-Global'),
+
+  /**
+   * Prefix used for persona-specific KB pages (e.g. `KB-glue`, `KB-skeptic`).
+   * Restricted to alphanumeric characters and dashes so page names are safe
+   * as git-tracked filenames and GitHub wiki slugs.
+   */
+  kbPagePrefix: z
+    .string()
+    .regex(/^[A-Za-z0-9-]+$/, 'KB_PAGE_PREFIX must contain only alphanumeric characters and dashes')
+    .default('KB-'),
+
+  /** Maximum number of git-push retries on non-fast-forward for `agentify-kb append`. */
+  kbWriteRetryMax: z.coerce.number().int().min(1).default(3),
+
+  /** Maximum byte length of a single KB entry written by `agentify-kb append`. */
+  kbEntryMaxBytes: z.coerce.number().int().positive().default(1024),
+
   /**
    * Force the Claude adapter selection. `auto` picks Live when EITHER
    * ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is set, otherwise Stub.
@@ -172,5 +205,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     claudeCodeOAuthToken: env.CLAUDE_CODE_OAUTH_TOKEN || undefined,
     disableGithub: env.DISABLE_GITHUB,
     claudeAdapter: env.CLAUDE_ADAPTER,
+    kbEnabled: env.KB_ENABLED,
+    kbGlobalPage: env.KB_GLOBAL_PAGE || undefined,
+    kbPagePrefix: env.KB_PAGE_PREFIX || undefined,
+    kbWriteRetryMax: env.KB_WRITE_RETRY_MAX,
+    kbEntryMaxBytes: env.KB_ENTRY_MAX_BYTES,
   });
 }
