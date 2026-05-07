@@ -170,30 +170,34 @@ export function applyHotReloadable(config: Config, fresh: Config): void {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  // Use `||` (not `??`) for all number-typed fields: compose's `${VAR-}`
+  // expands to '' when VAR is unset, and `z.coerce.number('')` → 0 which then
+  // trips `.positive()` / `.min(1)` constraints. `|| undefined` lets the empty
+  // string fall through to the schema default instead.
   return ConfigSchema.parse({
-    port: env.AGENT_PORT ?? env.PORT,
+    port: env.AGENT_PORT || env.PORT || undefined,
     host: env.HOST,
     soulPath: env.SOUL_PATH,
     workspacesDir: env.WORKSPACES_DIR,
     logLevel: env.LOG_LEVEL,
     coordinatorUrl: env.COORDINATOR_URL,
     agentPublicUrl: env.AGENT_PUBLIC_URL,
-    registerRetryMs: env.REGISTER_RETRY_MS,
-    registerMaxAttempts: env.REGISTER_MAX_ATTEMPTS,
-    heartbeatIntervalMs: env.HEARTBEAT_INTERVAL_MS,
-    coordinatorTimeoutMs: env.COORDINATOR_TIMEOUT_MS,
-    jobHistoryCapacity: env.JOB_HISTORY_CAPACITY,
-    claudeMaxTurns: env.CLAUDE_MAX_TURNS,
+    registerRetryMs: env.REGISTER_RETRY_MS || undefined,
+    registerMaxAttempts: env.REGISTER_MAX_ATTEMPTS || undefined,
+    heartbeatIntervalMs: env.HEARTBEAT_INTERVAL_MS || undefined,
+    coordinatorTimeoutMs: env.COORDINATOR_TIMEOUT_MS || undefined,
+    jobHistoryCapacity: env.JOB_HISTORY_CAPACITY || undefined,
+    claudeMaxTurns: env.CLAUDE_MAX_TURNS || undefined,
     // Per-method vars fall back to the global CLAUDE_MAX_TURNS when unset so
     // operators who only set the global don't need to touch per-method vars.
-    claudeMaxTurnsPlan: env.CLAUDE_MAX_TURNS_PLAN ?? env.CLAUDE_MAX_TURNS,
-    claudeMaxTurnsImplement: env.CLAUDE_MAX_TURNS_IMPLEMENT ?? env.CLAUDE_MAX_TURNS,
-    claudeMaxTurnsReview: env.CLAUDE_MAX_TURNS_REVIEW ?? env.CLAUDE_MAX_TURNS,
-    claudeMaxTurnsAddressReview: env.CLAUDE_MAX_TURNS_ADDRESS_REVIEW ?? env.CLAUDE_MAX_TURNS,
-    claudeMaxTurnsMerge: env.CLAUDE_MAX_TURNS_MERGE ?? env.CLAUDE_MAX_TURNS,
-    // compose's ${VAR-} expands to '' when VAR is unset; treat that as unset, not as 0=disabled
+    // `||` (not `??`) so an empty-string per-method var also falls through.
+    claudeMaxTurnsPlan: env.CLAUDE_MAX_TURNS_PLAN || env.CLAUDE_MAX_TURNS || undefined,
+    claudeMaxTurnsImplement: env.CLAUDE_MAX_TURNS_IMPLEMENT || env.CLAUDE_MAX_TURNS || undefined,
+    claudeMaxTurnsReview: env.CLAUDE_MAX_TURNS_REVIEW || env.CLAUDE_MAX_TURNS || undefined,
+    claudeMaxTurnsAddressReview: env.CLAUDE_MAX_TURNS_ADDRESS_REVIEW || env.CLAUDE_MAX_TURNS || undefined,
+    claudeMaxTurnsMerge: env.CLAUDE_MAX_TURNS_MERGE || env.CLAUDE_MAX_TURNS || undefined,
     claudeTimeoutMs: env.CLAUDE_TIMEOUT_MS || undefined,
-    claudeCostLimitUsd: env.CLAUDE_COST_LIMIT_USD,
+    claudeCostLimitUsd: env.CLAUDE_COST_LIMIT_USD || undefined,
     githubAppId: env.GITHUB_APP_ID,
     githubAppPrivateKey: env.GITHUB_APP_PRIVATE_KEY,
     githubAppInstallationId: env.GITHUB_APP_INSTALLATION_ID,
