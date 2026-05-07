@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { DispatchRequestSchema, JobResultSchema, RegisterRequestSchema } from './rpc.js';
+import {
+  DispatchRequestSchema,
+  JobArtifactsSchema,
+  JobResultSchema,
+  KbWriteRecordSchema,
+  RegisterRequestSchema,
+} from './rpc.js';
 
 const VALID_REGISTER_BASE = {
   name: 'tinkerer',
@@ -99,6 +105,172 @@ const VALID_JOB_RESULT_BASE = {
   duration_ms: 1000,
   artifacts: {},
 };
+
+/* ======================================================================== */
+/*                           KbWriteRecordSchema                            */
+/* ======================================================================== */
+
+describe('KbWriteRecordSchema', () => {
+  const VALID_KB_WRITE = {
+    page: 'KB-Tinkerer',
+    scope: 'persona' as const,
+    bytes: 512,
+  };
+
+  it('accepts a fully-populated record (with sha)', () => {
+    expect(
+      KbWriteRecordSchema.safeParse({
+        ...VALID_KB_WRITE,
+        sha: 'abc123def456',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepts a record without sha (sha is optional)', () => {
+    expect(KbWriteRecordSchema.safeParse(VALID_KB_WRITE).success).toBe(true);
+  });
+
+  it('accepts scope "global"', () => {
+    expect(
+      KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, scope: 'global' }).success,
+    ).toBe(true);
+  });
+
+  it('rejects empty page string', () => {
+    const result = KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, page: '' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects negative bytes', () => {
+    const result = KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, bytes: -1 });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects fractional bytes', () => {
+    const result = KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, bytes: 1.5 });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts bytes: 0 (zero-byte write is valid)', () => {
+    expect(
+      KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, bytes: 0 }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an invalid scope value', () => {
+    const result = KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, scope: 'team' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects empty sha string (sha must be min(1) when present)', () => {
+    const result = KbWriteRecordSchema.safeParse({ ...VALID_KB_WRITE, sha: '' });
+    expect(result.success).toBe(false);
+  });
+});
+
+/* ======================================================================== */
+/*              JobArtifactsSchema — kb_writes integration                   */
+/* ======================================================================== */
+
+describe('JobArtifactsSchema kb_writes slots', () => {
+  const KB_WRITE = { page: 'KB-Global', scope: 'global' as const, bytes: 128 };
+
+  it('round-trips implement artifact with kb_writes populated', () => {
+    const input = {
+      implement: {
+        branch: 'feat/x/1-foo',
+        pr_number: 42,
+        kb_writes: [{ ...KB_WRITE, sha: 'deadbeef' }],
+      },
+    };
+    const result = JobArtifactsSchema.safeParse(input);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.implement?.kb_writes).toHaveLength(1);
+      expect(result.data.implement?.kb_writes?.[0]?.sha).toBe('deadbeef');
+    }
+  });
+
+  it('round-trips plan artifact with kb_writes populated', () => {
+    const input = {
+      plan: { child_issues: [1, 2], kb_writes: [KB_WRITE] },
+    };
+    const result = JobArtifactsSchema.safeParse(input);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.plan?.kb_writes).toHaveLength(1);
+    }
+  });
+
+  it('round-trips review artifact with kb_writes populated', () => {
+    const input = {
+      review: {
+        review_id: 99,
+        verdict: 'approved' as const,
+        kb_writes: [KB_WRITE],
+      },
+    };
+    const result = JobArtifactsSchema.safeParse(input);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.review?.kb_writes).toHaveLength(1);
+    }
+  });
+
+  it('round-trips address_review artifact with kb_writes populated', () => {
+    const input = {
+      address_review: { commits_pushed: 2, rerequested: true, kb_writes: [KB_WRITE] },
+    };
+    const result = JobArtifactsSchema.safeParse(input);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.address_review?.kb_writes).toHaveLength(1);
+    }
+  });
+
+  it('round-trips merge artifact with kb_writes populated', () => {
+    const input = {
+      merge: { merged: true, closed_issue: 7, kb_writes: [KB_WRITE] },
+    };
+    const result = JobArtifactsSchema.safeParse(input);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.merge?.kb_writes).toHaveLength(1);
+    }
+  });
+
+  it('remains valid when kb_writes is absent from a slot (optional)', () => {
+    const input = {
+      implement: { branch: 'feat/x/1-foo', pr_number: 7 },
+    };
+    expect(JobArtifactsSchema.safeParse(input).success).toBe(true);
+  });
+
+  it('rejects a kb_write entry with negative bytes inside an implement slot', () => {
+    const input = {
+      implement: {
+        branch: 'feat/x/1-foo',
+        pr_number: 7,
+        kb_writes: [{ page: 'KB-Global', scope: 'global', bytes: -5 }],
+      },
+    };
+    expect(JobArtifactsSchema.safeParse(input).success).toBe(false);
+  });
+
+  it('rejects a kb_write entry with empty page inside a plan slot', () => {
+    const input = {
+      plan: {
+        child_issues: [1],
+        kb_writes: [{ page: '', scope: 'global', bytes: 10 }],
+      },
+    };
+    expect(JobArtifactsSchema.safeParse(input).success).toBe(false);
+  });
+});
+
+/* ======================================================================== */
+/*                      JobResultSchema cost_usd                             */
+/* ======================================================================== */
 
 describe('JobResultSchema cost_usd rejects non-finite values', () => {
   it('accepts a normal cost value', () => {
