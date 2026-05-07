@@ -266,7 +266,7 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
     }
 
     // Phase 2: Apps.
-    const appsResult = await appsFn({ state, io });
+    const appsResult = await appsFn({ state, io, passphrase });
     state = mergeState(state, appsResult);
     await saveFn(stateForSave(state, passphrase), stateOpts);
 

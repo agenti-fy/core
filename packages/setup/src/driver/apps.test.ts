@@ -12,10 +12,12 @@ import { runApps } from './apps.js';
 import { PromptCancelled } from '../prompts.js';
 import { CallbackTimeoutError } from '../callback-server.js';
 import { InstallationTimeoutError } from '../install.js';
+import { EncryptedValueSchema, decryptValue } from '../crypto.js';
 import type { IoStreams } from '../prompts.js';
 import type { WizardState, PersonaCreds } from '../state.js';
 import type { ExchangedApp } from '../manifest-exchange.js';
 import type { CallbackServerHandle } from '../callback-server.js';
+import type { EncryptedValue } from '../crypto.js';
 
 // ── Constants / fixtures ──────────────────────────────────────────────────────
 
@@ -163,6 +165,7 @@ function makeDeps(
     return {
       state,
       io: makeIo(ioLines),
+      passphrase: 'test-passphrase-12chars',
       openInBrowser: async (url: string) => { openedUrls.push(url); },
       saveState: async (s: WizardState) => { savedStates.push(s); },
       callbackServerFactory: async () => server.handle,
@@ -481,5 +484,41 @@ describe('runApps — per-persona checkpoint sanitization', () => {
     for (const s of savedStates) {
       expect(s.anthropic).toBeUndefined();
     }
+  });
+});
+
+describe('runApps — per-persona checkpoint encryption', () => {
+  it('per-persona checkpoint state has encrypted pem bytes', async () => {
+    // Run the full happy path (all 9 personas) and inspect the FIRST checkpoint.
+    // The first checkpoint is written immediately after the orchestrator persona
+    // completes, so only orchestrator has creds at that point — keeping
+    // the number of scrypt operations to a minimum (3 fields × 1 persona).
+    const { deps, savedStates, exchangeMock } = makeDeps();
+
+    await runApps(deps);
+
+    // 9 checkpoints total (one per persona).
+    expect(savedStates.length).toBe(PERSONA_COUNT);
+
+    // Inspect the first checkpoint (orchestrator persona).
+    const firstSaved = savedStates[0]!;
+    const orchestratorCreds = firstSaved.personas['orchestrator'];
+    expect(orchestratorCreds).toBeDefined();
+
+    // The pem field in the checkpoint must be an EncryptedValue, not a plaintext string.
+    const encryptedPem = orchestratorCreds!.pem;
+    expect(EncryptedValueSchema.safeParse(encryptedPem).success).toBe(true);
+    expect(typeof encryptedPem).not.toBe('string');
+
+    // Belt-and-braces: the raw JSON of the first checkpoint must not contain any
+    // plaintext PEM material (no '-----BEGIN' substring anywhere in the persisted blob).
+    expect(JSON.stringify(firstSaved)).not.toContain('-----BEGIN');
+
+    // Decrypt the captured ciphertext and verify it round-trips back to the
+    // original PEM that the exchange stub returned for the first (orchestrator) call.
+    const firstExchangeResult = await (exchangeMock.mock.results[0]!.value as Promise<{ pem: string }>);
+    const originalPem = firstExchangeResult.pem;
+    const decrypted = decryptValue(encryptedPem as EncryptedValue, 'test-passphrase-12chars');
+    expect(decrypted).toBe(originalPem);
   });
 });

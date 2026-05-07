@@ -357,6 +357,9 @@ describe('smoke — full wizard end-to-end round-trip', () => {
             appsPhase({
               state,
               io: phaseIo,
+              // Same passphrase as passphraseProvider above — keeps checkpoints
+              // encrypted consistently without a second prompt loop.
+              passphrase: 'smoke-test-passphrase',
               openInBrowser,
               exchangeManifest: exchangeFn,
               awaitInstallation: awaitInstallFn,
