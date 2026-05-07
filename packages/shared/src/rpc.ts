@@ -109,6 +109,11 @@ export type AgentStatusResponse = z.infer<typeof AgentStatusResponseSchema>;
 
 /* -------- KB write records -------- */
 
+/** Maximum number of KB write records allowed per job slot. */
+export const KB_WRITES_MAX = 64;
+/** Error message emitted by Zod when the per-slot `kb_writes` cap is exceeded. */
+export const KB_WRITES_MAX_MSG = `kb_writes capped at ${KB_WRITES_MAX} entries per job`;
+
 /**
  * A single knowledge-base write action surfaced by an agent skill run.
  * Written by `agentify-kb append` (Phase 2); parsed from `extractArtifacts`
@@ -157,35 +162,35 @@ export const JobArtifactsSchema = z
     plan: z
       .object({
         child_issues: z.array(z.number().int().positive()),
-        kb_writes: z.array(KbWriteRecordSchema).max(64, 'kb_writes capped at 64 entries per job').optional(),
+        kb_writes: z.array(KbWriteRecordSchema).max(KB_WRITES_MAX, KB_WRITES_MAX_MSG).optional(),
       })
       .optional(),
     implement: z
       .object({
         branch: z.string().min(1),
         pr_number: z.number().int().positive(),
-        kb_writes: z.array(KbWriteRecordSchema).max(64, 'kb_writes capped at 64 entries per job').optional(),
+        kb_writes: z.array(KbWriteRecordSchema).max(KB_WRITES_MAX, KB_WRITES_MAX_MSG).optional(),
       })
       .optional(),
     review: z
       .object({
         review_id: z.number().int(),
         verdict: z.enum(['approved', 'changes_requested', 'commented']),
-        kb_writes: z.array(KbWriteRecordSchema).max(64, 'kb_writes capped at 64 entries per job').optional(),
+        kb_writes: z.array(KbWriteRecordSchema).max(KB_WRITES_MAX, KB_WRITES_MAX_MSG).optional(),
       })
       .optional(),
     address_review: z
       .object({
         commits_pushed: z.number().int().nonnegative(),
         rerequested: z.boolean(),
-        kb_writes: z.array(KbWriteRecordSchema).max(64, 'kb_writes capped at 64 entries per job').optional(),
+        kb_writes: z.array(KbWriteRecordSchema).max(KB_WRITES_MAX, KB_WRITES_MAX_MSG).optional(),
       })
       .optional(),
     merge: z
       .object({
         merged: z.boolean(),
         closed_issue: z.number().int().positive().optional(),
-        kb_writes: z.array(KbWriteRecordSchema).max(64, 'kb_writes capped at 64 entries per job').optional(),
+        kb_writes: z.array(KbWriteRecordSchema).max(KB_WRITES_MAX, KB_WRITES_MAX_MSG).optional(),
       })
       .optional(),
   })
