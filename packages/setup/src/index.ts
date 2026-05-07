@@ -24,7 +24,8 @@ import * as path from 'node:path';
 import { BUILTIN_PERSONAS } from '@agentify/shared';
 import type { CliArgs } from './cli.js';
 import { PromptCancelled, printErr, type IoStreams } from './prompts.js';
-import { loadState, saveState, stateForSave, type WizardState } from './state.js';
+import { loadState, saveState, stateForSave, type WizardState, type StateOptions } from './state.js';
+import { getSessionPassphrase, type GetSessionPassphraseOpts } from './passphrase.js';
 import { runPreamble, type GhExec } from './driver/preamble.js';
 import { runApps } from './driver/apps.js';
 import { runAnthropic } from './driver/anthropic.js';
@@ -101,9 +102,18 @@ export interface RunDeps {
   /** Overrides the Verify phase (verify subcommand path). */
   runVerify?: (deps: VerifyDeps) => Promise<number>;
   /** Overrides the state-loader (useful for hermetic tests). */
-  loadState?: (prefix: string, opts?: { dir?: string }) => Promise<WizardState | null>;
+  loadState?: (prefix: string, opts?: StateOptions) => Promise<WizardState | null>;
   /** Overrides the state-writer (useful for hermetic tests). */
   saveState?: (state: WizardState, opts?: { dir?: string }) => Promise<void>;
+  /**
+   * Test-injection escape hatch for passphrase acquisition.
+   *
+   * In production {@link getSessionPassphrase} is called to prompt the
+   * operator interactively (or read `AGENTIFY_SETUP_PASSPHRASE`).  Tests
+   * inject `async () => 'fixed-test-passphrase'` here to avoid touching
+   * the masked-prompt loop.
+   */
+  passphraseProvider?: (io: IoStreams, opts?: GetSessionPassphraseOpts) => Promise<string>;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -191,28 +201,42 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
   const anthropicFn = deps?.runAnthropic ?? runAnthropic;
   const finalizeFn = deps?.runFinalize ?? driverRunFinalize;
   const verifyFn = deps?.runVerify ?? driverRunVerify;
+  const passphraseFn = deps?.passphraseProvider ?? getSessionPassphrase;
 
   // State files live in a directory; --state-file's dirname overrides the default.
   const stateDir = args.stateFile ? path.dirname(args.stateFile) : undefined;
   const stateOpts = stateDir ? { dir: stateDir } : undefined;
 
-  // ── Load initial state ────────────────────────────────────────────────────
-
-  // For resume we attempt to pre-load state so the preamble can confirm existing
-  // values.  For init we always start fresh (ignoring saved credentials).
-  let state: WizardState | null = null;
-  if (args.subcommand === 'resume') {
-    // The prefix is needed to locate the state file; use the --prefix flag when
-    // provided; otherwise preamble will ask and we skip pre-loading here.
-    const lookupPrefix = args.prefix;
-    if (lookupPrefix) {
-      state = await loadFn(lookupPrefix, stateOpts);
-    }
-  }
-
   // ── Main flow ─────────────────────────────────────────────────────────────
 
+  // `state` is declared here so the error handler can reference `state?.prefix`.
+  let state: WizardState | null = null;
+
   try {
+    // Acquire the session passphrase once and cache it for the rest of the run.
+    //
+    // Called unconditionally for all subcommands.  For `verify`, runVerify does
+    // not load or decrypt state, so the passphrase is acquired but never used for
+    // decryption — this is intentional: a consistent entry-point keeps the UX
+    // predictable and avoids a conditional prompt that would confuse operators.
+    //
+    // `PromptCancelled` from the masked-input prompt propagates into the existing
+    // catch block below, returning exit code 130 (same as any other cancellation).
+    const passphrase = await passphraseFn(io, { confirm: args.subcommand === 'init' });
+
+    // ── Load initial state ──────────────────────────────────────────────────
+
+    // For resume we attempt to pre-load state so the preamble can confirm existing
+    // values.  For init we always start fresh (ignoring saved credentials).
+    if (args.subcommand === 'resume') {
+      // The prefix is needed to locate the state file; use the --prefix flag when
+      // provided; otherwise preamble will ask and we skip pre-loading here.
+      const lookupPrefix = args.prefix;
+      if (lookupPrefix) {
+        state = await loadFn(lookupPrefix, { ...stateOpts, passphrase });
+      }
+    }
+
     // Phase 1: Preamble (always runs; confirms from state when available).
     // exactOptionalPropertyTypes: only include `spawn` when it is defined.
     const preambleOpts = spawn !== undefined
@@ -230,7 +254,7 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
         ownerType: preambleResult.ownerType,
       });
     }
-    await saveFn(stateForSave(state), stateOpts);
+    await saveFn(stateForSave(state, passphrase), stateOpts);
 
     // verify subcommand: run verification against an existing .env, skipping
     // the App-creation and Anthropic phases.
@@ -244,12 +268,12 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
     // Phase 2: Apps.
     const appsResult = await appsFn({ state, io });
     state = mergeState(state, appsResult);
-    await saveFn(stateForSave(state), stateOpts);
+    await saveFn(stateForSave(state, passphrase), stateOpts);
 
     // Phase 3: Anthropic.
     const anthropicResult = await anthropicFn({ state, io });
     state = mergeState(state, anthropicResult);
-    await saveFn(stateForSave(state), stateOpts);
+    await saveFn(stateForSave(state, passphrase), stateOpts);
 
     // Phase 4: Finalize — write the .env file (or print if --dry-run).
     // exactOptionalPropertyTypes: only include optional fields when defined.
@@ -257,7 +281,7 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
     if (args.dryRun) finalizeOpts.dryRun = true;
     if (args.envOut !== undefined) finalizeOpts.envOut = args.envOut;
     await finalizeFn(finalizeOpts);
-    await saveFn(stateForSave(state), stateOpts);
+    await saveFn(stateForSave(state, passphrase), stateOpts);
 
     return 0;
   } catch (err) {

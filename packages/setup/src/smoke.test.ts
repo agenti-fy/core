@@ -347,6 +347,10 @@ describe('smoke — full wizard end-to-end round-trip', () => {
         const exitCode = await run(cliArgs, {
           io,
 
+          // Inject a fixed passphrase so the smoke test never touches the
+          // interactive masked-prompt loop (stdin is already ended above).
+          passphraseProvider: async () => 'smoke-test-passphrase',
+
           runPreamble: async () => PREAMBLE,
 
           runApps: async ({ state, io: phaseIo }) =>
