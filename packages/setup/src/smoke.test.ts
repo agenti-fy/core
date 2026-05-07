@@ -377,9 +377,8 @@ describe('smoke — full wizard end-to-end round-trip', () => {
         });
 
         // 9. Surface any errors from the fake browser background tasks.
-        if (backgroundErrors.length > 0) {
-          throw backgroundErrors[0];
-        }
+        const firstError = backgroundErrors[0];
+        if (firstError) throw firstError;
 
         // 10. Assert the wizard completed successfully.
         expect(exitCode).toBe(0);
