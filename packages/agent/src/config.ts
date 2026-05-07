@@ -190,7 +190,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     claudeMaxTurns: env.CLAUDE_MAX_TURNS || undefined,
     // Per-method vars fall back to the global CLAUDE_MAX_TURNS when unset so
     // operators who only set the global don't need to touch per-method vars.
-    // `||` (not `??`) so an empty-string per-method var also falls through.
+    // `||` so an empty-string per-method var falls through to the global, then to the schema default.
     claudeMaxTurnsPlan: env.CLAUDE_MAX_TURNS_PLAN || env.CLAUDE_MAX_TURNS || undefined,
     claudeMaxTurnsImplement: env.CLAUDE_MAX_TURNS_IMPLEMENT || env.CLAUDE_MAX_TURNS || undefined,
     claudeMaxTurnsReview: env.CLAUDE_MAX_TURNS_REVIEW || env.CLAUDE_MAX_TURNS || undefined,
