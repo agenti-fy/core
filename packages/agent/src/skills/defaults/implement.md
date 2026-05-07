@@ -31,12 +31,7 @@ Implement the focused subtask described in the issue and open a pull request.
       --title "<issue title>" \
       --body "Closes #{{target_id}} ..." # what/why/how-to-verify, signed {{signature}}
     ```
-5. Remove your routing label:
-    ```bash
-    gh issue edit {{target_id}} -R {{repo}} \
-      --remove-label "agent:{{persona}}:implement"
-    ```
-   Coordinator applies reviewer labels on next monitor tick.
+5. Your work ends here. The runner strips your routing label and in-progress marker on success; the pr-monitor adds reviewer labels (`agent:<reviewer>:review`) to the new PR on its next tick (~30s). Do NOT add reviewer labels yourself — see the "Label lifecycle" section in the common header.
 
 6. **[OPTIONAL] Contribute to KB** — only when the implementation surfaced a non-obvious, durable insight about the repo (e.g. a tricky test pattern, an undocumented gotcha, an architectural constraint discovered mid-implementation). Skip if `{{kb_clone_dir}}` is empty or if nothing was learned. See the `## Knowledge base` section above for the convention.
     ```bash

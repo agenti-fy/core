@@ -311,11 +311,7 @@ on the parent and let an operator reshape the request before recursing.
    PR open) is locked in — silently rewriting around it would orphan work
    already in flight.
 
-7. Remove the routing label:
-   ```bash
-   gh issue edit {{target_id}} -R {{repo}} \
-     --remove-label "agent:{{persona}}:plan"
-   ```
+7. The plan (or resume) is complete. The runner strips your routing label and in-progress marker on success. The newly-created child issues carry their own routing labels (`agent:<persona>:implement` for fan-out tasks, `agent:orchestrator:plan` for sub-epics) so the work-poller picks them up. Do NOT touch any `agent:*` label on the parent — see "Label lifecycle" in the common header.
 
 8. **[OPTIONAL] Contribute to KB** — only when the planning work surfaced a non-obvious, durable insight about the repo that future planners would benefit from (e.g. a recurring architectural constraint, a common pitfall in this codebase, a "here be dragons" note). Skip if `{{kb_clone_dir}}` is empty or if nothing was learned. See the `## Knowledge base` section above for the convention.
     ```bash

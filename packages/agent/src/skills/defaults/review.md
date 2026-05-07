@@ -44,10 +44,7 @@ Post a single **terminal verdict** — `APPROVE` or `REQUEST_CHANGES` — from y
     # reviewer (custom soul, not in PR_MONITOR_REQUIRED_REVIEWERS). If you are
     # a required reviewer, use --approve or --request-changes.
     ```
-5. Remove your routing label:
-    ```bash
-    gh pr edit {{target_id}} -R {{repo}} --remove-label "agent:{{persona}}:review"
-    ```
+5. Your verdict is posted; you're done. The runner strips your routing label and in-progress marker. The pr-monitor will route the next step on its next tick (re-review on new commits, address-review on changes-requested, merge when all required reviewers approve). Do NOT touch any `agent:*` label — see "Label lifecycle" in the common header.
 6. **[OPTIONAL] Contribute to KB** — only if this review surfaced a non-obvious, durable insight that every future reviewer of this repo needs to know (not observations about this specific PR — those belong in your review body). Skip if `{{kb_clone_dir}}` is empty or if nothing was learned.
     ```bash
     echo "<insight>" | agentify-kb append persona --from-pr {{target_id}}

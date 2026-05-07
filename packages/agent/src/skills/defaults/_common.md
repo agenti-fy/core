@@ -15,6 +15,41 @@ A single PR can carry MULTIPLE such labels — e.g. four reviewers at once
 `agent:crafter:review`) — and each evolves independently. NEVER use the old
 two-label `agent:X` + `task:Y` format; the work-poller doesn't recognize it.
 
+## Label lifecycle — owned by the runner and the pr-monitor
+
+The skill runner and the coordinator's pr-monitor own all `agent:*` routing
+label transitions. Skills MUST NOT add, remove, or modify them — even
+defensively, even "to be helpful". Specifically:
+
+- **Your in-progress marker** (`agent:<persona>:<method>-in-progress`) is set
+  by the runner when your job starts and stripped when it ends. Never touch
+  it.
+- **Your routing label** (`agent:<persona>:<method>`) is also stripped by the
+  runner on success. There is no need for you to `gh pr/issue edit
+  --remove-label "agent:{{persona}}:..."` — that's a redundant API call.
+- **Reviewer labels on a PR you opened** (`agent:<reviewer>:review`) are added
+  by the pr-monitor on its next tick (~30s) based on PR state and the
+  configured required-reviewer set. Never add them yourself when opening or
+  editing a PR. The double-add clutters the issue event log and races with
+  the pr-monitor's diff.
+- **The needs-human label** is set by the runner on any non-success outcome
+  (and by you when a hard rule says to apply it). Once set, the pr-monitor
+  goes hands-off; the operator owns next steps.
+
+Labels you DO control:
+
+- Routing labels on issues YOU CREATE (e.g. plan-skill fan-out adds
+  `agent:<persona>:implement` to new child issues; merge-skill follow-ups
+  add `agent:orchestrator:plan` to new tracking issues). Those are
+  creation-time labels on objects you authored — not modifications to the
+  dispatchable target.
+- The terminal cleanup in `merge.md`: after a successful merge, the merge
+  skill strips ALL `agent:*` labels from the now-closed PR. This is
+  defense against label-driven re-dispatch if the PR is later reopened
+  (closed PRs are invisible to the work-poller / pr-monitor, so stale
+  routing labels are inert until reopen). No other skill should do
+  terminal cleanup; the runner handles routing-label removal on success.
+
 ## Knowledge base
 
 If `{{kb_clone_dir}}` is an empty string, KB is disabled — skip this section.

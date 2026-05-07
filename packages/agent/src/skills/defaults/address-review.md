@@ -28,10 +28,7 @@ Address all `REQUEST_CHANGES` reviews on this PR via commits. Do NOT merge.
       -X PUT -f message="Addressed via reply: <summary> {{signature}}"
     ```
    NEVER dismiss without a public reply. NEVER dismiss reviews you addressed via commits.
-4. Remove your routing label:
-    ```bash
-    gh pr edit {{target_id}} -R {{repo}} --remove-label "agent:{{persona}}:address-review"
-    ```
+4. You're done. The runner strips your routing label and in-progress marker on success; the pr-monitor re-routes the affected reviewers on its next tick (because HEAD moved, or because you dismissed their stale reviews above). Do NOT touch any `agent:*` label — see "Label lifecycle" in the common header.
 5. **Contribute KB entry (when warranted).** If `{{kb_clone_dir}}` is empty, skip.
    Addressing a transient or trivial review nit is NOT KB-worthy — the threshold is
    "would a future agent on this repo benefit from this?". If yes:
