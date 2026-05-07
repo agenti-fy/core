@@ -149,6 +149,22 @@ Cost tracking is best-effort: older SDK versions may not report per-turn cost da
 
 **Hot-reload**: changing `CLAUDE_MAX_TURNS_*`, `CLAUDE_TIMEOUT_MS`, or `CLAUDE_COST_LIMIT_USD` and calling `POST /reset` applies the new value on the next skill run without a process restart. Static-at-boot settings (`HOST`, `PORT`, `COORDINATOR_URL`, `AGENT_PUBLIC_URL`, `HEARTBEAT_INTERVAL_MS`, credentials) require a restart to take effect.
 
+## Knowledge base
+
+Each managed repo accumulates a durable, append-only knowledge base stored as Markdown pages in the repo's GitHub Wiki. At the start of a skill run the agent reads the shared global page (`KB-Global.md`) and the persona-specific page (e.g. `KB-skeptic.md`); at the end of a run the agent may append new observations. The KB lets insights and pitfalls accumulate across successive jobs without inflating Claude's in-context token budget by default. For the full architecture see [SPEC.md §23](../../SPEC.md) and parent plan [#226](https://github.com/agenti-fy/core/issues/226).
+
+These five vars are **boot-only** (not hot-reloadable); a process restart is required to change them.
+
+| Env var | Default | Rationale |
+|---|---|---|
+| `KB_ENABLED` | `true` | Master toggle — set to `false` to disable all KB reads and writes without touching other config |
+| `KB_GLOBAL_PAGE` | `KB-Global` | Name of the shared wiki page visible to every persona; must match `[A-Za-z0-9 _-]+` (WikiManager appends `.md`) |
+| `KB_PAGE_PREFIX` | `KB-` | Prefix for persona-specific wiki pages (e.g. `KB-glue`); must match `[A-Za-z0-9-]+` |
+| `KB_WRITE_RETRY_MAX` | `3` | Maximum push retries on non-fast-forward conflicts during `agentify-kb append`; integer ≥ 1 |
+| `KB_ENTRY_MAX_BYTES` | `1024` | Hard byte cap per appended entry; ceiling `10485760` (10 MiB) — prevents operator typos from ballooning wiki history |
+
+Canonical schema and constraints: `packages/agent/src/config.ts` (`kbEnabled` … `kbEntryMaxBytes` region).
+
 ## Local dev
 
 Run without GitHub or a real API key:
