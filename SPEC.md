@@ -1171,6 +1171,23 @@ Skill prompt templates receive three new interpolation variables when KB is enab
 - `{{kb_global_page}}` — name of the shared KB page (e.g. `KB-Global`); compose full paths as `{{kb_clone_dir}}/{{kb_global_page}}.md`.
 - `{{kb_persona_page}}` — name of the persona-scoped KB page (e.g. `KB-Tinkerer`); compose full paths as `{{kb_clone_dir}}/{{kb_persona_page}}.md`.
 
+#### Stable-template contract
+
+`{{kb_clone_dir}}` is interpolated into the **stable** prompt section even though its value is per-job (the absolute path to the wiki worktree changes for every run). This is intentional — the stable section is the prompt prefix shared across jobs to maximise prompt-cache hit rate — but it depends on a contract that prompt authors must satisfy.
+
+**The contract**: every occurrence of `{{kb_clone_dir}}` in a default skill prompt must be either:
+
+- **(a) a standalone presence/guard token** — used in a conditional check only, e.g. "if `{{kb_clone_dir}}` is empty, skip the KB steps"; or
+- **(b) a composition prefix** — the beginning of one of the two documented path forms: `{{kb_clone_dir}}/{{kb_global_page}}.md` or `{{kb_clone_dir}}/{{kb_persona_page}}.md`.
+
+Any other usage embeds a per-job filesystem path inside cache-stable prose, defeating prompt-cache reuse across jobs that share the same (soul, method) pair.
+
+**Counterpart variables**: `{{kb_global_page}}` and `{{kb_persona_page}}` derive from the soul and operator config — stable per (soul, config) — and may be used freely anywhere in prompt prose without cache impact.
+
+**Enforcement**: a vitest assertion in `packages/agent/src/skills/resolver.test.ts` scans every file in `packages/agent/src/skills/defaults/` and fails the build on any violation of the above contract.
+
+See `packages/agent/src/skills/resolver.ts` lines 146-152 for the architectural decision recorded inline.
+
 See `packages/agent/src/skills/defaults/_common.md` for the shared KB read/write convention taught to all skills.
 
 ### 23.9 Operator runbook
