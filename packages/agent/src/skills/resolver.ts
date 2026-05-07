@@ -150,9 +150,19 @@ export function resolveSkill(opts: ResolveOptions): ResolvedSkill {
   // from the soul/config (stable per agent), and kb_clone_dir is per-job but
   // skill prompts guard against it being empty rather than using it as a
   // cache-keyed value.
+  //
+  // _common.md is expanded via {{common}} in a single interpolate() pass, which
+  // means any {{kb_*}} placeholders INSIDE _common.md would not be re-processed
+  // by the same pass. We pre-interpolate the common content with KB vars before
+  // injecting it so KB instructions in _common.md receive their actual values.
+  const resolvedCommon = interpolate(loadCommon(), {
+    kb_clone_dir: opts.kbCloneDir ?? '',
+    kb_global_page: opts.kbGlobalPage,
+    kb_persona_page: opts.kbPersonaPage,
+  });
   const stableTemplate = interpolate(skillTemplate, {
     signature: signatureFor(opts.soul),
-    common: loadCommon(),
+    common: resolvedCommon,
     kb_clone_dir: opts.kbCloneDir ?? '',
     kb_global_page: opts.kbGlobalPage,
     kb_persona_page: opts.kbPersonaPage,
