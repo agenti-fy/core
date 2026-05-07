@@ -74,6 +74,18 @@ export async function dispatchBatch(
     byRepo.set(item.repo, list);
   }
 
+  // Sort each repo bucket by target_id ASC (primary), persona_name ASC (secondary),
+  // method ASC (tertiary) so that older items (lower IDs) are dispatched first,
+  // reducing rebase debt for sibling PRs that follow.
+  for (const bucket of byRepo.values()) {
+    bucket.sort(
+      (a, b) =>
+        a.target_id - b.target_id ||
+        a.persona_name.localeCompare(b.persona_name) ||
+        a.method.localeCompare(b.method),
+    );
+  }
+
   await Promise.all(
     [...byRepo.values()].map((repoItems) => dispatchRepoBatch(repoItems, deps, summary)),
   );
