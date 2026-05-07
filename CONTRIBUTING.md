@@ -50,6 +50,14 @@ All four commands should exit 0. `pnpm typecheck` and `pnpm test` succeed on a f
 without a prior `pnpm build` — only `pnpm start` requires built output. If `pnpm build` fails,
 check that your Node version is ≥ 22.
 
+> **Note on `pnpm typecheck` and `dist/` artifacts:** `pnpm typecheck` runs `tsc -b` (TypeScript
+> project-references build mode). Because each package is configured with `"composite": true`,
+> `tsc -b` emits a full build into each package's `dist/` directory — JavaScript, declaration
+> files, source maps, and a `dist/.tsbuildinfo` incremental cache. These files are expected and
+> should not be committed; `dist/`, `.tsbuildinfo`, and `*.tsbuildinfo` are all covered by
+> `.gitignore`. If you suspect a stale `.tsbuildinfo` is masking a real type error locally, run
+> `pnpm clean` to wipe the caches, then re-run `pnpm typecheck`.
+
 To wipe compiled output and caches and start fresh:
 
 ```sh
