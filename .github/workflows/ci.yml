@@ -19,6 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    # dist/ is intentionally NOT cached between runs. The `cache: pnpm` option on
+    # `actions/setup-node` caches only the pnpm store. Caching dist/ would risk restoring a stale
+    # dist/.tsbuildinfo whose fingerprints disagree with live source, causing `tsc -b`
+    # to skip re-checking changed files and silently pass a broken typecheck.
+    # Any future cache step that covers dist/ must key on hashFiles('**/tsconfig*.json','pnpm-lock.yaml').
     steps:
       - uses: actions/checkout@v4
 
