@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `KB_ENTRY_MAX_BYTES` upper-bound ceiling: values above 10 MiB (10 485 760 bytes) are now rejected at startup by the zod schema to prevent operator typos from committing gigantic blobs to the wiki git tree (#282). To raise the ceiling legitimately, increase `KB_ENTRY_MAX_BYTES_CEILING` in `packages/agent/src/config.ts` and document the new value in `docs/operations.md`.
 - **Setup wizard**: the GitHub App manifest form now opens automatically in the operator's default browser (macOS, Windows, Linux, WSL). On headless environments, the URL is printed in bold for easy copy/paste. (#441, wired by #473)
 - **SPEC.md §22.6 — Setup wizard secret-at-rest policy**: documents the state-file location and modes, atomic-rename write contract, `stateForSave` sanitization (Anthropic key stripping + PEM encrypt-at-rest), passphrase handling, resume behavior, V1 migration path, and `.env` as the only persistent home of decrypted PEMs. Driven by ADR-001 (`docs/adr/001-pem-at-rest-mitigation.md`). (#483)
+- **setup wizard**: encrypt PEMs, OAuth client secrets, and webhook secrets at rest in the checkpoint state file using AES-256-GCM with a passphrase-derived key (scrypt). New env var `AGENTIFY_SETUP_PASSPHRASE` for headless/CI runs; legacy v1 state files are migrated in place on next load. Operator-facing passphrase UX documented in `packages/setup/README.md § Setup-passphrase`; cryptographic design in `docs/adr/001-pem-at-rest-mitigation.md`. (#484, ADR-001)
 
 ### Changed
 
