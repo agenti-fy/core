@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Hardened `KB_GLOBAL_PAGE` validator: now restricted to `[A-Za-z0-9 _-]+`, rejecting shell metacharacters, path separators, and leading dots before Phase 2 wires the value into git argv and file paths (#264).
 - `KB_ENTRY_MAX_BYTES` upper-bound ceiling: values above 10 MiB (10 485 760 bytes) are now rejected at startup by the zod schema to prevent operator typos from committing gigantic blobs to the wiki git tree (#282). To raise the ceiling legitimately, increase `KB_ENTRY_MAX_BYTES_CEILING` in `packages/agent/src/config.ts` and document the new value in `docs/operations.md`.
 - **Setup wizard**: the GitHub App manifest form now opens automatically in the operator's default browser (macOS, Windows, Linux, WSL). On headless environments, the URL is printed in bold for easy copy/paste. (#441, wired by #473)
+- **SPEC.md §22.6 — Setup wizard secret-at-rest policy**: documents the state-file location and modes, atomic-rename write contract, `stateForSave` sanitization (Anthropic key stripping + PEM encrypt-at-rest), passphrase handling, resume behavior, V1 migration path, and `.env` as the only persistent home of decrypted PEMs. Driven by ADR-001 (`docs/adr/001-pem-at-rest-mitigation.md`). (#483)
 
 ### Changed
 

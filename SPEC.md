@@ -183,7 +183,7 @@ You are The Tinkerer. <persona prose, examples, principles, hard rules…>
 | Var | Required on | Purpose |
 |---|---|---|
 | `GITHUB_APP_ID` | agent + coordinator | GitHub App ID |
-| `GITHUB_APP_PRIVATE_KEY` | agent + coordinator | PEM contents (not path) |
+| `GITHUB_APP_PRIVATE_KEY` | agent + coordinator | PEM contents (not path) — the decrypted PEM; `.env` is its only persistent on-disk home (see §22.6 for the setup wizard at-rest policy) |
 | `GITHUB_APP_INSTALLATION_ID` | agent + coordinator | Installation ID |
 | `GITHUB_USER` | agent + coordinator | App-as-user login (e.g. `agentify-bot[bot]`). Used to filter the agent's own comments/reviews when polling so we don't loop on our own actions. |
 | `COORDINATOR_URL` | agent | Base URL of coordinator (e.g. `http://coordinator:8080`) |
@@ -1043,6 +1043,58 @@ When the coordinator applies `needs-human` due to a hijack detection:
 3. **False positive.** Edit the issue body to remove or rephrase the triggering phrase, then remove the `needs-human` label. The work poller will re-evaluate on the next cycle and route normally if the body no longer matches.
 4. **Confirmed attack.** Close the issue and block the author via GitHub's abuse tooling if appropriate. Do not remove `needs-human` without addressing the content.
 5. **Adjust the catalog if needed.** If false-positive rate is high on a specific pattern, open an issue to tighten the regex. Bias the catalog toward precision — a missed detection reaches the `SECURITY_PREAMBLE` defense; an over-eager pattern disrupts legitimate work.
+
+### 22.6 Setup wizard — secret-at-rest policy
+
+The `@agentify/setup` wizard captures PEM private keys, OAuth client secrets, webhook secrets, and Anthropic credentials as it bootstraps the ten GitHub Apps. This section documents where each secret lives at rest and the protection contract applied by the wizard. For the UX walkthrough, see `docs/setup-wizard.md`. For the architectural rationale behind the chosen strategy, see `docs/adr/001-pem-at-rest-mitigation.md`.
+
+#### State file
+
+The wizard checkpoints intermediate state to `~/.config/agentify/setup-<prefix>.json` after every phase. File and directory modes are set at creation and re-asserted on every write:
+
+| Path | Mode |
+|---|---|
+| `~/.config/agentify/` (parent dir) | `0o700` |
+| `~/.config/agentify/setup-<prefix>.json` | `0o600` |
+
+Writes use an **atomic rename**: the wizard writes to a `.tmp` sibling and `fs.renameSync`s it into place, so a mid-write crash never leaves a truncated file. The prior state is intact until the rename succeeds.
+
+#### `stateForSave` sanitization contract
+
+All writes go through a `stateForSave(state, passphrase)` helper before reaching `saveState`. The helper applies two transformations:
+
+1. **`anthropic.value` stripping** — the Anthropic API key (`sk-ant-*`) is omitted from every checkpoint. Because it is entered once at the final phase and never needed for resumability, it is not worth persisting; the operator re-enters it only if they resume after that phase. (Introduced in PRs #426 / #430; regression test at `packages/setup/src/index.test.ts:209-224`.)
+
+2. **PEM encryption** — `pem` fields for every persona and the coordinator App, plus `clientSecret`, `webhookSecret`, and `anthropic.oauth_token`, are encrypted with a key derived from the operator's session passphrase before serialization (strategy chosen in ADR-001, tracked for implementation in #484). The on-disk form is an `EncryptedValue` object (`{ version: 2, iv, salt, tag, ciphertext }` — all base64-encoded); the plaintext PEM never appears in the state file.
+
+The per-persona checkpoint path in `packages/setup/src/driver/apps.ts` calls `stateForSave` on every save, ensuring no checkpoint bypasses sanitization (fix tracked in #482).
+
+#### Passphrase handling
+
+A session passphrase is collected once per wizard run:
+
+- **First run** — prompted interactively on wizard entry (minimum 12 characters; empty passphrases are rejected).
+- **Resume** — prompted immediately after loading the state file, before any decryption. A wrong passphrase causes the wizard to print an error and exit; it does not partially decrypt.
+- **CI / headless** — set `AGENTIFY_SETUP_PASSPHRASE` in the environment to skip the interactive prompt.
+
+The passphrase and the derived key live only in process memory; they are never written to the state file or `.env`.
+
+#### Resume behavior
+
+| Secret | Survives crash / Ctrl-C? | What the operator must supply on resume |
+|---|---|---|
+| PEM private keys | ✅ (encrypted in state file) | Passphrase to decrypt |
+| `clientSecret`, `webhookSecret` | ✅ (encrypted in state file) | Passphrase to decrypt |
+| `anthropic.value` (API key) | ❌ (stripped before save) | Re-enter the API key |
+| Session passphrase | ❌ (memory only) | Passphrase |
+
+#### V1 state file migration
+
+State files written before ADR-001 (`stateVersion` absent or `1`) contain plaintext PEMs. On load the wizard detects the legacy format, prompts for a passphrase, re-encrypts all PEM fields, and writes a v2 state file. Operators who have already completed the wizard (`.env` exists) may instead delete the state file and start fresh with a new prefix.
+
+#### `.env` as the final destination
+
+`.env` is the **only** persistent location where decrypted PEM values appear. The `finalize` phase writes all ten `*_GITHUB_APP_PRIVATE_KEY` entries there in plaintext after decryption (`.env` is operator-managed and not covered by the wizard's at-rest policy). Once `.env` is written, the state file is no longer needed and may be deleted.
 
 ## 23. Knowledge base
 
