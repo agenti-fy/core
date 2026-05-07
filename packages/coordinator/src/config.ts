@@ -73,6 +73,11 @@ const ConfigSchema = z.object({
    * it lands in the `jobs.result_json` SQLite column. A job whose result exceeds this
    * cap is recorded as `task_error` with the artifacts blob replaced by `{}` to keep
    * the row valid JSON for downstream consumers. Defaults to 256 KiB.
+   *
+   * Note: `.length` returns UTF-16 code units, not UTF-8 bytes. For non-ASCII
+   * payloads the actual on-disk byte count can exceed this value by up to ~4×, but
+   * the cap remains a sound hard bound within a small constant factor for real-world
+   * payloads (sufficient for the adversarial-blob threat model).
    */
   maxResultJsonBytes: z.coerce.number().int().positive().default(256 * 1024),
 
