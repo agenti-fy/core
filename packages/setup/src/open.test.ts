@@ -90,7 +90,7 @@ describe('resolveCommand', () => {
   });
 
   it('other platform (e.g. freebsd) → xdg-open <url>', () => {
-    expect(resolveCommand(URL, 'freebsd' as NodeJS.Platform)).toEqual({
+    expect(resolveCommand(URL, 'freebsd')).toEqual({
       bin: 'xdg-open',
       args: [URL],
     });
@@ -174,9 +174,8 @@ describe('openInBrowser', () => {
   it('linux (non-WSL): spawns "xdg-open" with the URL and resolves { launched: true }', async () => {
     setPlatform('linux');
     // readFileSync returns a non-WSL /proc/version.
-    // Cast through unknown because vi.mock infers the broadest overload signature.
     vi.mocked(readFileSync).mockReturnValue(
-      'Linux version 5.15.0-generic #33-Ubuntu SMP' as unknown as ReturnType<typeof readFileSync>,
+      'Linux version 5.15.0-generic #33-Ubuntu SMP',
     );
     const child = makeMockChild();
     vi.mocked(spawn).mockReturnValue(child);
@@ -194,7 +193,7 @@ describe('openInBrowser', () => {
   it('linux (WSL): reads /proc/version, detects microsoft, spawns cmd.exe', async () => {
     setPlatform('linux');
     vi.mocked(readFileSync).mockReturnValue(
-      'Linux version 5.15.90.1-microsoft-standard-WSL2' as unknown as ReturnType<typeof readFileSync>,
+      'Linux version 5.15.90.1-microsoft-standard-WSL2',
     );
     const child = makeMockChild();
     vi.mocked(spawn).mockReturnValue(child);
