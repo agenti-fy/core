@@ -299,6 +299,62 @@ describe('renderEnv', () => {
         }),
       ).toThrow();
     });
+
+    describe('tunable key validation', () => {
+      it('accepts valid uppercase env-var keys', () => {
+        expect(() =>
+          WizardConfigSchema.parse({
+            ...makeFixtureConfig(),
+            tunables: { LOG_LEVEL: 'debug', WORK_POLL_S: 30, _HIDDEN: 'x' },
+          }),
+        ).not.toThrow();
+      });
+
+      it('rejects keys containing a newline character', () => {
+        expect(() =>
+          WizardConfigSchema.parse({
+            ...makeFixtureConfig(),
+            tunables: { ['INJECT\nED']: 'bad' },
+          }),
+        ).toThrow();
+      });
+
+      it('rejects keys containing an equals sign', () => {
+        expect(() =>
+          WizardConfigSchema.parse({
+            ...makeFixtureConfig(),
+            tunables: { ['KEY=EVIL']: 'bad' },
+          }),
+        ).toThrow();
+      });
+
+      it('rejects lowercase keys', () => {
+        expect(() =>
+          WizardConfigSchema.parse({
+            ...makeFixtureConfig(),
+            tunables: { log_level: 'debug' },
+          }),
+        ).toThrow();
+      });
+
+      it('rejects keys that start with a digit', () => {
+        expect(() =>
+          WizardConfigSchema.parse({
+            ...makeFixtureConfig(),
+            tunables: { '1BAD': 'value' },
+          }),
+        ).toThrow();
+      });
+
+      it('rejects empty-string keys', () => {
+        expect(() =>
+          WizardConfigSchema.parse({
+            ...makeFixtureConfig(),
+            tunables: { '': 'value' },
+          }),
+        ).toThrow();
+      });
+    });
   });
 
   describe('output ordering', () => {

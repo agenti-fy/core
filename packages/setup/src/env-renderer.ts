@@ -29,8 +29,20 @@ const AnthropicSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('oauth_token'), value: NonEmptyString }),
 ]);
 
+/**
+ * Tunable keys must be valid upper-case environment variable identifiers so
+ * that a key containing `\n` or `=` cannot inject extra lines into the
+ * generated .env file.  Operator-supplied values are still unrestricted.
+ */
+const TunableKeySchema = z
+  .string()
+  .regex(
+    /^[A-Z_][A-Z0-9_]*$/,
+    'tunable keys must be uppercase environment variable names ([A-Z_][A-Z0-9_]*)',
+  );
+
 const TunablesSchema = z
-  .record(z.string(), z.union([z.string(), z.number()]).optional())
+  .record(TunableKeySchema, z.union([z.string(), z.number()]).optional())
   .optional();
 
 const PersonasSchema = z.object(
