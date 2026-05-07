@@ -57,6 +57,13 @@ x-agent-env: &agent-env
   # 0/false/no/off/empty (false). Anything else falls back to false.
   DISABLE_GITHUB: ${DISABLE_GITHUB:-false}
 
+  # Knowledge base (KB).
+  KB_ENABLED: ${KB_ENABLED:-true}
+  KB_GLOBAL_PAGE: ${KB_GLOBAL_PAGE:-KB-Global}
+  KB_PAGE_PREFIX: ${KB_PAGE_PREFIX:-KB-}
+  KB_WRITE_RETRY_MAX: ${KB_WRITE_RETRY_MAX:-3}
+  KB_ENTRY_MAX_BYTES: ${KB_ENTRY_MAX_BYTES:-1024}
+
 x-agent-defaults: &agent-defaults
   image: agentify/agent:0.1.0
   restart: unless-stopped

@@ -247,6 +247,11 @@ The agent's `LiveClaudeAdapter` calls the Claude Agent SDK. Set `ANTHROPIC_API_K
 | `CLAUDE_TIMEOUT_MS`            | `900000` (15 min)       | Per-skill wall-clock cap. `0` disables.                  |
 | `CLAUDE_COST_LIMIT_USD`        | `5.0`                   | Per-job USD ceiling. `0` disables. Aborts with `task_error` when exceeded. |
 | `CLAUDE_ADAPTER`               | `auto`                  | `auto`, `live`, or `stub`                                |
+| `KB_ENABLED`                   | `true`                  | Master toggle for the wiki-based knowledge base. Accepts `1/true/yes/on` (true) or `0/false/no/off/''` (false). |
+| `KB_GLOBAL_PAGE`               | `KB-Global`             | Name of the shared wiki page visible to all personas. No `/` or `.md` suffix — WikiManager appends `.md`. |
+| `KB_PAGE_PREFIX`               | `KB-`                   | Prefix for per-persona KB pages (e.g. `KB-scribe`). Alphanumeric + dashes only (`^[A-Za-z0-9-]+$`). |
+| `KB_WRITE_RETRY_MAX`           | `3`                     | Max git-push retries on non-fast-forward conflict (int ≥ 1). |
+| `KB_ENTRY_MAX_BYTES`           | `1024`                  | Hard byte cap on a single KB entry written by an agent (int > 0). |
 | `ANTHROPIC_API_KEY`            | —                       | Required for the live adapter                            |
 | `GITHUB_APP_*` / `GITHUB_USER` | —                       | Same as coordinator. Not needed if `DISABLE_GITHUB=true` |
 | `DISABLE_GITHUB`               | `false`                 | Mock all GitHub mutations (logs only)                    |
