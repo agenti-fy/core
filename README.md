@@ -43,6 +43,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history. Architectural decisions 
   - [Anthropic API key](#anthropic-api-key)
   - [Coordinator env](#coordinator-env)
   - [Agent env](#agent-env)
+  - [Setup wizard env](#setup-wizard-env)
 - [Tuning for token cost](#tuning-for-token-cost)
 - [SOUL.md format](#soulmd-format)
 - [Operating](#operating)
@@ -278,6 +279,14 @@ The agent's `LiveClaudeAdapter` calls the Claude Agent SDK. Set `ANTHROPIC_API_K
 | `DISABLE_GITHUB`               | `false`                 | Mock all GitHub mutations (logs only)                    |
 
 See [`packages/agent/README.md` — Turn budgets](packages/agent/README.md#turn-budgets) for the per-method defaults, override precedence, and rationale.
+
+### Setup wizard env
+
+The `agentify-setup` wizard runs on the host (not in a container) and uses this env var for at-rest encryption of GitHub App PEMs in the resumable state store.
+
+| Variable                       | Default | Description                                                                                                           |
+| ------------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------- |
+| `AGENTIFY_SETUP_PASSPHRASE`    | —       | Passphrase for AES-GCM key derivation (via `crypto.scrypt`). Minimum 12 characters. When unset, the wizard prompts interactively with masked input. Set in CI/headless deployments to skip the prompt. |
 
 ## Tuning for token cost
 
