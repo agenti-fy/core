@@ -13,6 +13,7 @@ Operator reference for agenti-fy. Commands are written to run against the defaul
 - [Re-routing a stuck issue](#re-routing-a-stuck-issue)
 - [Reading the SSE log stream](#reading-the-sse-log-stream)
 - [Prometheus metrics](#prometheus-metrics)
+- [KB write limits](#kb-write-limits)
 - [Database surgery (last resort)](#database-surgery-last-resort)
 
 ---
@@ -260,6 +261,19 @@ histogram_quantile(0.95, sum by (method, le)(rate(agentify_job_duration_ms_bucke
 # Cumulative Claude cost per persona
 agentify_claude_cost_usd_total
 ```
+
+---
+
+## KB write limits
+
+Agent-side configuration for `agentify-kb append`.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `KB_ENTRY_MAX_BYTES` | `1024` (1 KiB) | Maximum byte length of a single KB entry written by `agentify-kb append`. Values above 10 MiB (the `KB_ENTRY_MAX_BYTES_CEILING` in `packages/agent/src/config.ts`) are rejected at startup with a zod validation error. To raise the ceiling legitimately, increase that constant and update this table. |
+| `KB_WRITE_RETRY_MAX` | `3` | Maximum number of git-push retries on non-fast-forward for `agentify-kb append`. |
+
+**Why a ceiling on `KB_ENTRY_MAX_BYTES`?** Without an upper bound, an operator typo (e.g. `KB_ENTRY_MAX_BYTES=999999999`) would silently allow gigantic blobs to be committed to the wiki git tree on every append, ballooning repo history without bound. The schema-layer ceiling catches this at startup before any wiki traffic.
 
 ---
 

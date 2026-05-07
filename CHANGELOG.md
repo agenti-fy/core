@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **TUI per-job tokens and cost**: the recent-jobs table now includes a `$cost` column, and selecting a job shows a token/cost breakdown panel with input, output, cache-read, and cache-write token counts (thousands-separated) and cost to 4 decimal places. Jobs predating the `usage` fields in `JobResult` render `—` in the column and show no detail panel (#147).
 - **KB Prometheus counters** (Phase 1 of #226): `agentify_kb_reads_total` (by `scope`), `agentify_kb_writes_total` (by `scope` and `outcome`), and `agentify_kb_write_conflicts_total` are now registered on agent startup; operators will see zero-valued series from the first deploy, enabling alerting before any KB traffic. Closes #249.
 - Hardened `KB_GLOBAL_PAGE` validator: now restricted to `[A-Za-z0-9 _-]+`, rejecting shell metacharacters, path separators, and leading dots before Phase 2 wires the value into git argv and file paths (#264).
+- `KB_ENTRY_MAX_BYTES` upper-bound ceiling: values above 10 MiB (10 485 760 bytes) are now rejected at startup by the zod schema to prevent operator typos from committing gigantic blobs to the wiki git tree (#282). To raise the ceiling legitimately, increase `KB_ENTRY_MAX_BYTES_CEILING` in `packages/agent/src/config.ts` and document the new value in `docs/operations.md`.
 
 ### Changed
 
