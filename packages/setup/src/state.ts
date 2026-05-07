@@ -105,12 +105,12 @@ const PersonasSchema = z.object(
  *
  * `version` is the forward-compatibility hook: bump it whenever the shape
  * changes and add a migration branch in `loadState`.  V1 files (plaintext PEMs)
- * are migrated on load — see the v1→v2 migration subtask for that logic.
+ * are migrated on load — see #492 (V1 → V2 migration on load) for that logic.
  */
 export const WizardStateSchema = z.object({
   /**
    * Schema version — always 2 for files written by this module.
-   * V1 files are migrated on load (forward-reference: see migration subtask).
+   * V1 files are migrated on load — see #492.
    */
   version: z.literal(2),
   /** Operator-supplied prefix used to name Apps (e.g. "agentify-alice"). */
