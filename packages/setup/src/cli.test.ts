@@ -146,11 +146,15 @@ describe('--help / -h', () => {
 // ── Flag: --version ───────────────────────────────────────────────────────────
 
 describe('--version / -V', () => {
-  it('sets showVersion via --version (long form parsed by tui uses -V)', () => {
+  it('sets showVersion via --version (long form)', () => {
+    expect(parse(['--version']).showVersion).toBe(true);
+  });
+
+  it('sets showVersion via -V (short form)', () => {
     expect(parse(['-V']).showVersion).toBe(true);
   });
 
-  it('combined --version with a subcommand still sets showVersion', () => {
+  it('combined -V with a subcommand still sets showVersion', () => {
     const args = parse(['-V', 'resume']);
     expect(args.showVersion).toBe(true);
     expect(args.subcommand).toBe('resume');
