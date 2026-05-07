@@ -1,6 +1,5 @@
 import type { Logger } from 'pino';
 import {
-  inProgressLabel,
   isBuiltinPersona,
   NEEDS_HUMAN_LABEL,
   normalizeIssueLabels,
