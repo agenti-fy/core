@@ -3,6 +3,7 @@ import type { Logger } from 'pino';
 import type { CoordinatorStore } from '../store.js';
 import type { AgentRpcClient } from '../agent-client.js';
 import type { CoordinatorMetrics } from '../metrics.js';
+import { compareMethodsByPriority } from '@agentify/shared';
 import { requestFullScanForRepo, type PendingWorkItem } from '../poller/work-poller.js';
 
 export interface DispatchDeps {
@@ -74,15 +75,17 @@ export async function dispatchBatch(
     byRepo.set(item.repo, list);
   }
 
-  // Sort each repo bucket by target_id ASC (primary), persona_name ASC (secondary),
-  // method ASC (tertiary) so that older items (lower IDs) are dispatched first,
-  // reducing rebase debt for sibling PRs that follow.
+  // Sort each repo bucket by (method-priority DESC, target_id ASC, persona_name ASC)
+  // so that lifecycle-late work drains before lifecycle-early work begins (#408):
+  //   merge > address_review > review > implement > plan   ← method priority (primary)
+  //   lower target_id wins within a method                 ← FIFO tiebreaker (secondary)
+  //   alphabetical persona_name within same method + id    ← deterministic tiebreaker (tertiary)
   for (const bucket of byRepo.values()) {
     bucket.sort(
       (a, b) =>
+        compareMethodsByPriority(a.method, b.method) ||
         a.target_id - b.target_id ||
-        a.persona_name.localeCompare(b.persona_name) ||
-        a.method.localeCompare(b.method),
+        a.persona_name.localeCompare(b.persona_name),
     );
   }
 

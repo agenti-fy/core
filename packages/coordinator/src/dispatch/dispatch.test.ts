@@ -403,4 +403,104 @@ describe('dispatchBatch', () => {
     expect(client.calls).toHaveLength(1);
     store.close();
   });
+
+  // ── lifecycle-priority tests (issue #408) ─────────────────────────────────
+
+  it('merge beats plan despite higher target_id: method priority is primary key', async () => {
+    // One agent supporting both plan and merge. Two items: plan at target_id 5
+    // (lower id, old sort would have dispatched this first) and merge at
+    // target_id 500 (higher id). After the new sort, merge wins on priority.
+    const a = regAgent(store, 'tinkerer-1', ['plan', 'merge']);
+    client.push({ kind: 'accepted', data: { job_id: 'm1', agent_id: a.agent_id, status: 'BUSY' } });
+
+    await dispatchBatch(
+      [
+        workItem({ method: 'plan', target_id: 5 }),
+        workItem({ method: 'merge', target_id: 500 }),
+      ],
+      { store, agentClient: client, logger: silentLog },
+    );
+
+    // Only one accept was queued, so exactly one dispatch happened.
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]!.method).toBe('merge');
+    expect((client.calls[0]!.body as { job_id: string; id: number }).id).toBe(500);
+    store.close();
+  });
+
+  it('full lifecycle ordering: merge → address_review → review → implement → plan', async () => {
+    // Five agents, one per method/persona. Items queued in shuffled order.
+    // After sort, client.calls should reflect lifecycle-late-first order.
+    const agents = {
+      glue:     store.registerAgent({ name: 'glue-1',     type: 'glue',     version: '0.1.0', url: 'http://glue-1:8080',     supported_methods: ['merge'] }),
+      scribe:   store.registerAgent({ name: 'scribe-1',   type: 'scribe',   version: '0.1.0', url: 'http://scribe-1:8080',   supported_methods: ['address_review'] }),
+      skeptic:  store.registerAgent({ name: 'skeptic-1',  type: 'skeptic',  version: '0.1.0', url: 'http://skeptic-1:8080',  supported_methods: ['review'] }),
+      theorist: store.registerAgent({ name: 'theorist-1', type: 'theorist', version: '0.1.0', url: 'http://theorist-1:8080', supported_methods: ['implement'] }),
+      tinkerer: regAgent(store, 'tinkerer-1', ['plan']),
+    };
+    // Push one accept per agent (order doesn't matter — they're distinct agents).
+    client.push({ kind: 'accepted', data: { job_id: 'j-glue',     agent_id: agents.glue.agent_id,     status: 'BUSY' } });
+    client.push({ kind: 'accepted', data: { job_id: 'j-scribe',   agent_id: agents.scribe.agent_id,   status: 'BUSY' } });
+    client.push({ kind: 'accepted', data: { job_id: 'j-skeptic',  agent_id: agents.skeptic.agent_id,  status: 'BUSY' } });
+    client.push({ kind: 'accepted', data: { job_id: 'j-theorist', agent_id: agents.theorist.agent_id, status: 'BUSY' } });
+    client.push({ kind: 'accepted', data: { job_id: 'j-tinkerer', agent_id: agents.tinkerer.agent_id, status: 'BUSY' } });
+
+    // Enqueue items in shuffled method order to prove the sort is what drives the outcome.
+    await dispatchBatch(
+      [
+        workItem({ persona: 'tinkerer', persona_name: 'tinkerer', method: 'plan',           target_id: 1 }),
+        workItem({ persona: 'skeptic',  persona_name: 'skeptic',  method: 'review',         target_id: 2 }),
+        workItem({ persona: 'glue',     persona_name: 'glue',     method: 'merge',          target_id: 3 }),
+        workItem({ persona: 'theorist', persona_name: 'theorist', method: 'implement',      target_id: 4 }),
+        workItem({ persona: 'scribe',   persona_name: 'scribe',   method: 'address_review', target_id: 5 }),
+      ],
+      { store, agentClient: client, logger: silentLog },
+    );
+
+    expect(client.calls).toHaveLength(5);
+    const dispatchedMethods = client.calls.map((c) => c.method);
+    expect(dispatchedMethods).toEqual(['merge', 'address_review', 'review', 'implement', 'plan']);
+    store.close();
+  });
+
+  it('target_id is the secondary tiebreaker within a method: lowest id dispatched first', async () => {
+    // Three merge items in the same repo. After sort: target_id 5 → 50 → 100.
+    // With one accept queued, only target_id 5 gets dispatched.
+    const a = regAgent(store, 'tinkerer-1', ['merge']);
+    client.push({ kind: 'accepted', data: { job_id: 'm5', agent_id: a.agent_id, status: 'BUSY' } });
+
+    await dispatchBatch(
+      [
+        workItem({ method: 'merge', target_id: 100 }),
+        workItem({ method: 'merge', target_id: 5 }),
+        workItem({ method: 'merge', target_id: 50 }),
+      ],
+      { store, agentClient: client, logger: silentLog },
+    );
+
+    expect(client.calls).toHaveLength(1);
+    expect((client.calls[0]!.body as { job_id: string; id: number }).id).toBe(5);
+    store.close();
+  });
+
+  it('cross-method strictly beats cross-id: merge:999 dispatched before plan:1', async () => {
+    // plan at target_id 1 (lower id) vs merge at target_id 999 (higher id).
+    // The old sort would have dispatched plan:1 first. The new sort must
+    // dispatch merge:999 first because method priority is the primary key.
+    const a = regAgent(store, 'tinkerer-1', ['plan', 'merge']);
+    client.push({ kind: 'accepted', data: { job_id: 'mj', agent_id: a.agent_id, status: 'BUSY' } });
+
+    await dispatchBatch(
+      [
+        workItem({ method: 'plan',  target_id: 1 }),
+        workItem({ method: 'merge', target_id: 999 }),
+      ],
+      { store, agentClient: client, logger: silentLog },
+    );
+
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]!.method).toBe('merge');
+    expect((client.calls[0]!.body as { job_id: string; id: number }).id).toBe(999);
+    store.close();
+  });
 });
