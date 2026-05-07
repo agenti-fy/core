@@ -129,12 +129,15 @@ All intervals are env vars resolved in `src/config.ts` (lines 19–45).
 | `JOB_COMPLETION_POLL_S` | `5` s | `src/config.ts:21` | Check each running job's agent `/status` for completion |
 | `INSTALLATION_REFRESH_S` | `300` s | `src/config.ts:20` | Refresh `repos` table from GitHub App installation |
 | `STALE_JOB_SWEEP_S` | `600` s | `src/config.ts:38` | Sweep stuck in-progress labels; restore routing |
+| `MAX_RESULT_JSON_BYTES` | `262144` | `src/config.ts:77` | Hard cap on serialized `result_json`; oversize results become `task_error` with `artifacts: {}` |
 | `PR_MONITOR_INTERVAL_S` | `30` s | `src/config.ts:45` | Walk open PRs; apply reviewer/action routing labels |
 | `PLAN_COMPLETION_POLL_S` | `60` s | `src/config.ts:44` | Walk open plans; update parent checklists; close completed parents |
 
 `DEFAULT_POLL_INTERVAL_S` (default `30`) sets `repos.poll_interval_s` when a repo is first discovered. Individual repos can be tuned via `PATCH /repos/:owner/:name`.
 
 `STALE_JOB_TIMEOUT_S` (default `1800`) controls how old an in-progress label must be before the sweeper acts on it.
+
+`MAX_RESULT_JSON_BYTES` (default `262144`) sets the upper bound on the serialized job result persisted to `jobs.result_json`. When a result exceeds this limit the coordinator records the job as `task_error`, replaces `artifacts` with `{}`, and logs a warning with `serialized_bytes` and `cap` fields for triage.
 
 ---
 

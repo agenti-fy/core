@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `MAX_RESULT_JSON_BYTES` (default `262144`, 256 KiB): hard cap on the serialized job result persisted to `jobs.result_json` (#288). Jobs whose result exceeds the cap are recorded as `task_error` with `artifacts: {}` to keep the row valid JSON for downstream consumers. Documented in `.env.example`, `README.md`, `docker-compose.yml`, `docs/operations.md`, and `packages/coordinator/README.md`.
 - `CLAUDE_COST_LIMIT_USD` (default `5.0` USD, `0` disables): per-job cost ceiling in the live adapter (#98). When the cumulative cost reported by the SDK crosses the ceiling the job is aborted with `task_error`. Documented in `.env.example`, `README.md`, `docker-compose.yml`, `docs/operations.md`, and `packages/agent/README.md`.
 - **TUI per-job tokens and cost**: the recent-jobs table now includes a `$cost` column, and selecting a job shows a token/cost breakdown panel with input, output, cache-read, and cache-write token counts (thousands-separated) and cost to 4 decimal places. Jobs predating the `usage` fields in `JobResult` render `—` in the column and show no detail panel (#147).
 

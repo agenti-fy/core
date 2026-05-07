@@ -219,6 +219,7 @@ The agent's `LiveClaudeAdapter` calls the Claude Agent SDK. Set `ANTHROPIC_API_K
 | `FAILED_DISPATCH_RETENTION_DAYS` | `7`        | GC retention for `failed_to_dispatch` rows                     |
 | `COMPLETED_JOB_RETENTION_DAYS` | `30`         | GC retention for `complete`/`failed` rows                      |
 | `PR_MAX_REVIEW_CYCLES`         | `5`          | Max automated review ↔ address-review iterations per PR. Applies `needs-human` when exceeded. (#70) |
+| `MAX_RESULT_JSON_BYTES`        | `262144`     | Hard cap on serialized `result_json`; oversize results are recorded as `task_error` with empty artifacts (#288) |
 | `DISABLE_GITHUB`               | `false`      | Skip the GitHub client entirely (tests/smoke runs)             |
 
 ### Agent env
