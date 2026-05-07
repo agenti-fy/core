@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Align `SPEC.md §23.5 step 5` to reference `KB_WRITE_RETRY_MAX` (default 3) instead of the hardcoded literal "3", adding "exponential backoff" phrasing to match `docs/knowledge-base.md`. Closes the drift flagged by #361; traces back to the env var shipped in #354 and the plan in #371.
 - Align `KB_WRITES_MAX_MSG` wording from "per job" to "per slot" in `packages/shared/src/rpc.ts`, matching the updated `SPEC.md §6.4` wording introduced in PR #348 (parent issue #357).
 - Lift the `kb_writes` cap (64) and its error message into the exported `KB_WRITES_MAX` / `KB_WRITES_MAX_MSG` constants in `packages/shared/src/rpc.ts`. Removes 5× duplication of the literal flagged in PR #291. Closes #336.
 - Drop the now-unreachable `.endsWith('.md')` refine on `KB_GLOBAL_PAGE` (#330). The strict allowlist regex landed in #328 already excludes `.`; invalid inputs still throw, just with the regex error message rather than the suffix-refine one.
