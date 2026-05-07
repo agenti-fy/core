@@ -225,6 +225,9 @@ Source: `packages/agent/src/metrics.ts`. All metrics carry a `persona` default l
 | `agentify_job_duration_ms` | `method`, `outcome` | Wall-clock skill duration (buckets: 100 ms – 20 min) |
 | `agentify_claude_tokens_total` | `kind` | Claude SDK tokens consumed. `kind`: `input`, `output`, `cache_read`, `cache_write` |
 | `agentify_claude_cost_usd_total` | `method` | Cumulative USD cost by method |
+| `agentify_kb_reads_total` | `scope` | KB reads. `scope`: `global`, `persona` |
+| `agentify_kb_writes_total` | `scope`, `outcome` | KB write attempts. `outcome`: `success`, `conflict_retry_exhausted`, `format_rejected`, `wiki_disabled` |
+| `agentify_kb_write_conflicts_total` | — | Individual KB write conflict retries (every retry, regardless of final outcome) |
 | `agentify_agent_*` | — | Default prom-client process / Node.js metrics |
 
 ### Scrape config snippet
