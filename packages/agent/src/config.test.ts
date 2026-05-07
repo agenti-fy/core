@@ -116,3 +116,15 @@ describe('loadConfig — kbEntryMaxBytes validation', () => {
     expect(cfg.kbEntryMaxBytes).toBe(512);
   });
 });
+
+describe('loadConfig — empty-string coercion for KB numeric fields', () => {
+  it('falls back to schema defaults when KB_WRITE_RETRY_MAX and KB_ENTRY_MAX_BYTES are empty strings', () => {
+    const cfg = loadConfig({
+      ...BASE_ENV,
+      KB_WRITE_RETRY_MAX: '',
+      KB_ENTRY_MAX_BYTES: '',
+    });
+    expect(cfg.kbWriteRetryMax).toBe(3);
+    expect(cfg.kbEntryMaxBytes).toBe(1024);
+  });
+});
