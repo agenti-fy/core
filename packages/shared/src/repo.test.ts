@@ -19,6 +19,45 @@ describe('parseRepo', () => {
   it('rejects multi-slash paths', () => {
     expect(() => parseRepo('acme/api/extra')).toThrow();
   });
+
+  describe('charset rejection', () => {
+    it("rejects single-quote in repo segment", () => {
+      expect(() => parseRepo("acme/api'")).toThrow(/disallowed characters/);
+    });
+    it("rejects single-quote in owner segment", () => {
+      expect(() => parseRepo("ac'me/api")).toThrow(/disallowed characters/);
+    });
+    it('rejects space in owner segment', () => {
+      expect(() => parseRepo('ac me/api')).toThrow(/disallowed characters/);
+    });
+    it('rejects space in repo segment', () => {
+      expect(() => parseRepo('acme/my repo')).toThrow(/disallowed characters/);
+    });
+    it('rejects semicolon in repo segment', () => {
+      expect(() => parseRepo('acme/api;ls')).toThrow(/disallowed characters/);
+    });
+    it('rejects dollar sign in repo segment', () => {
+      expect(() => parseRepo('acme/api$PWD')).toThrow(/disallowed characters/);
+    });
+    it('rejects backtick in repo segment', () => {
+      expect(() => parseRepo('acme/api`id`')).toThrow(/disallowed characters/);
+    });
+    it('rejects backslash in repo segment', () => {
+      expect(() => parseRepo('acme/api\\n')).toThrow(/disallowed characters/);
+    });
+    it('rejects pipe in repo segment', () => {
+      expect(() => parseRepo('acme/api|cat')).toThrow(/disallowed characters/);
+    });
+    it('rejects ampersand in repo segment', () => {
+      expect(() => parseRepo('acme/api&ls')).toThrow(/disallowed characters/);
+    });
+    it('rejects parentheses in repo segment', () => {
+      expect(() => parseRepo('acme/api()')).toThrow(/disallowed characters/);
+    });
+    it('rejects angle brackets in repo segment', () => {
+      expect(() => parseRepo('acme/api<>')).toThrow(/disallowed characters/);
+    });
+  });
 });
 
 describe('formatRepo', () => {
