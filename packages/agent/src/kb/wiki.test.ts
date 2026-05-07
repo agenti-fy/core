@@ -289,13 +289,21 @@ describe('ensurePages — non-fast-forward push retry', () => {
     vi.clearAllMocks();
   });
 
+  // Mock for the `git symbolic-ref --short HEAD` lookup that ensurePages now
+  // runs before push/pull — it resolves the branch name so explicit
+  // `origin HEAD:<branch>` and `pull --rebase origin <branch>` work without
+  // depending on `branch.<name>.remote` tracking config (a `git clone --bare`
+  // doesn't set that, and plain `git push` then errors out fatally).
+  const symbolicRefOk = { stdout: 'master\n', stderr: '' };
+
   it('retries push with git pull --rebase on non-fast-forward rejection', async () => {
     // First push rejects with non-fast-forward; pull + retry push succeed.
     mockRunGit
       .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git add
       .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git commit
+      .mockResolvedValueOnce(symbolicRefOk)              // git symbolic-ref --short HEAD
       .mockRejectedValueOnce(makeNffError())            // git push — rejected
-      .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git pull --rebase
+      .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git pull --rebase origin master
       .mockResolvedValueOnce({ stdout: '', stderr: '' }); // git push — retry
 
     await callEnsurePages(mgr, tmpDir, makeSoul());
@@ -311,8 +319,9 @@ describe('ensurePages — non-fast-forward push retry', () => {
     mockRunGit
       .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git add
       .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git commit
+      .mockResolvedValueOnce(symbolicRefOk)              // git symbolic-ref --short HEAD
       .mockRejectedValueOnce(makeNffError())            // first push
-      .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git pull --rebase
+      .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git pull --rebase origin master
       .mockRejectedValueOnce(new Error('push failed again')); // retry push fails
 
     await callEnsurePages(mgr, tmpDir, makeSoul());
@@ -327,6 +336,7 @@ describe('ensurePages — non-fast-forward push retry', () => {
     mockRunGit
       .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git add
       .mockResolvedValueOnce({ stdout: '', stderr: '' }) // git commit
+      .mockResolvedValueOnce(symbolicRefOk)              // git symbolic-ref --short HEAD
       .mockRejectedValueOnce(new Error('permission denied — push failed'));
 
     await callEnsurePages(mgr, tmpDir, makeSoul());

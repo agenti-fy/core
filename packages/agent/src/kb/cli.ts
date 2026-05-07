@@ -226,6 +226,27 @@ function isPushConflict(msg: string): boolean {
   );
 }
 
+/**
+ * Push command — explicit `origin HEAD:<branch>` so the push works regardless
+ * of whether `branch.<name>.remote` tracking is configured. A `git clone --bare`
+ * does NOT set up tracking, and a bare `git push` then fails with
+ * "fatal: The current branch <x> has no upstream branch" — which `isPushConflict`
+ * doesn't recognize, so the CLI used to exit 1 fatal and orphan the local commit.
+ * Real failure mode observed across multiple agents: every persona-page entry
+ * sat unpushed for the entire session.
+ *
+ * `HEAD:<branch>` (where `<branch>` is the SAME name as the local HEAD) preserves
+ * branch-name semantics — we're pushing master to master, not into a new ref.
+ */
+async function gitPush(cwd: string, force: boolean): Promise<void> {
+  const { stdout } = await git(cwd, ['symbolic-ref', '--short', 'HEAD']);
+  const branch = stdout.trim();
+  const args = ['push'];
+  if (force) args.push('--force-with-lease');
+  args.push('origin', `HEAD:${branch}`);
+  await git(cwd, args);
+}
+
 // ── subcommand: append ────────────────────────────────────────────────────────
 
 interface AppendOptions {
@@ -282,6 +303,28 @@ async function cmdAppend(opts: AppendOptions, env: CliEnv): Promise<void> {
     process.exit(2);
   }
 
+  // Reject Claude Code internal scaffolding leaking into KB content. The
+  // harness emits `<system-reminder>` blocks (and adjacent control-tag
+  // shapes like `<user>`, `<assistant>`, `<command-name>`) into the
+  // model's context as out-of-band signals. If an agent ever pipes that
+  // text into `agentify-kb append`, the resulting KB entry looks like a
+  // prompt-injection attempt to every future reader — which is exactly
+  // what happened with the false-positive on agenti-fy/core#466. Reject
+  // here so the failure mode is "append fails fast" rather than "future
+  // reviewers chase a phantom hijack."
+  const SCAFFOLDING_TAGS_RE =
+    /<\/?(?:system-reminder|user-prompt-submit-hook|user|assistant|command-name|command-message|command-args|local-command-stdout|local-command-stderr)\b/i;
+  if (SCAFFOLDING_TAGS_RE.test(body)) {
+    process.stderr.write(
+      'agentify-kb: entry contains Claude Code scaffolding tags ' +
+      '(<system-reminder>, <user>, <assistant>, etc.). Re-author the entry ' +
+      'with the actual insight — these tags are harness control sequences, ' +
+      'not external content, and create false-positive hijack flags for ' +
+      'future readers.\n',
+    );
+    process.exit(2);
+  }
+
   // ── 3. Resolve target file ─────────────────────────────────────────────────
   const filename = kbPageFilename(opts.scope, persona, globalPage, pagePrefix);
   const filePath = join(cloneDir, filename);
@@ -331,7 +374,7 @@ async function cmdAppend(opts: AppendOptions, env: CliEnv): Promise<void> {
 
   for (let attempt = 0; attempt < retryMax; attempt++) {
     try {
-      await git(cloneDir, ['push', '--force-with-lease']);
+      await gitPush(cloneDir, true);
       const { stdout } = await git(cloneDir, ['rev-parse', 'HEAD']);
       sha = stdout.trim();
       finalConflictErr = null;
@@ -351,7 +394,14 @@ async function cmdAppend(opts: AppendOptions, env: CliEnv): Promise<void> {
       if (attempt < retryMax - 1) {
         await pause(attempt);
         try {
-          await git(cloneDir, ['pull', '--rebase']);
+          // Pull from origin's branch counterpart explicitly — same reason
+          // gitPush avoids relying on tracking config: a fresh `--bare` clone
+          // doesn't set `branch.<name>.merge`, so a plain `git pull --rebase`
+          // would fail with "There is no tracking information for the current
+          // branch" before we get a chance to retry.
+          const { stdout } = await git(cloneDir, ['symbolic-ref', '--short', 'HEAD']);
+          const branch = stdout.trim();
+          await git(cloneDir, ['pull', '--rebase', 'origin', branch]);
         } catch (rebaseErr) {
           process.stderr.write(
             `agentify-kb: rebase failed: ${(rebaseErr as Error).message}\n`,

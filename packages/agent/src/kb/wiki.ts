@@ -328,9 +328,19 @@ export class WikiManager {
     await runGit(['-C', cloneDir, 'add', ...created]);
     await runGit(['-C', cloneDir, 'commit', '-m', 'kb: bootstrap pages']);
 
+    // Resolve the current branch name once — `git clone --bare` doesn't set
+    // `branch.<name>.remote` tracking config, so plain `git push` and
+    // `git pull --rebase` fail with "no upstream branch" / "no tracking
+    // information." Always specify `origin <branch>` explicitly. Real failure
+    // mode observed: every agent's bootstrap commit sat unpushed because the
+    // initial `git push` errored out in a way `agentify-kb append` couldn't
+    // recover from either.
+    const { stdout: branchOut } = await runGit(['-C', cloneDir, 'symbolic-ref', '--short', 'HEAD']);
+    const branch = branchOut.trim();
+
     // Push with a single retry on non-fast-forward.
     try {
-      await runGit(['-C', cloneDir, 'push']);
+      await runGit(['-C', cloneDir, 'push', 'origin', `HEAD:${branch}`]);
     } catch (pushErr) {
       const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
       if (isNonFastForward(pushMsg)) {
@@ -339,8 +349,8 @@ export class WikiManager {
           'kb push rejected (non-fast-forward); rebasing and retrying',
         );
         try {
-          await runGit(['-C', cloneDir, 'pull', '--rebase']);
-          await runGit(['-C', cloneDir, 'push']);
+          await runGit(['-C', cloneDir, 'pull', '--rebase', 'origin', branch]);
+          await runGit(['-C', cloneDir, 'push', 'origin', `HEAD:${branch}`]);
         } catch (retryErr) {
           this.logger.warn(
             {
