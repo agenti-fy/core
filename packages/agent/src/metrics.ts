@@ -4,12 +4,40 @@ import type { JobOutcome, Method } from '@agentify/shared';
 /** Scope for KB read/write operations. */
 export type KbScope = 'global' | 'persona';
 
-/** Outcome of a KB write attempt. */
+/**
+ * Outcome of a KB write attempt.
+ *
+ * **Phase 2 implementers**: route any untyped string through
+ * `assertKbWriteOutcome(value)` instead of casting with `as KbWriteOutcome`.
+ * Rationale: `prom-client` validates label *names* at startup but not label
+ * *values* at runtime — an unchecked cast lets attacker-influenced strings
+ * mint unbounded new time series (cardinality DoS).
+ */
 export type KbWriteOutcome =
   | 'success'
   | 'conflict_retry_exhausted'
   | 'format_rejected'
   | 'wiki_disabled';
+
+/** Runtime-checkable set matching the KbWriteOutcome union. */
+export const VALID_KB_WRITE_OUTCOMES: ReadonlySet<KbWriteOutcome> = new Set<KbWriteOutcome>([
+  'success',
+  'conflict_retry_exhausted',
+  'format_rejected',
+  'wiki_disabled',
+]);
+
+/** Predicate form — branch without throwing. */
+export function isKbWriteOutcome(value: unknown): value is KbWriteOutcome {
+  return typeof value === 'string' && VALID_KB_WRITE_OUTCOMES.has(value as KbWriteOutcome);
+}
+
+/** Asserting form — narrow at the perimeter; throw on invalid input. */
+export function assertKbWriteOutcome(value: unknown): asserts value is KbWriteOutcome {
+  if (!isKbWriteOutcome(value)) {
+    throw new Error(`Invalid KbWriteOutcome: ${JSON.stringify(value)}`);
+  }
+}
 
 /**
  * Agent metrics. Exposed at GET /metrics in Prometheus text format. Wired

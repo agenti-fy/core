@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { AgentMetrics } from './metrics.js';
+import {
+  AgentMetrics,
+  VALID_KB_WRITE_OUTCOMES,
+  isKbWriteOutcome,
+  assertKbWriteOutcome,
+  type KbWriteOutcome,
+} from './metrics.js';
 
 describe('AgentMetrics', () => {
   let metrics: AgentMetrics;
@@ -79,6 +85,89 @@ describe('AgentMetrics', () => {
       const values = await metrics.kbWriteConflictsTotal.get();
       const total = values.values.reduce((sum, v) => sum + v.value, 0);
       expect(total).toBe(3);
+    });
+  });
+
+  describe('isKbWriteOutcome', () => {
+    it.each(['success', 'conflict_retry_exhausted', 'format_rejected', 'wiki_disabled'] as const)(
+      'returns true for valid literal %s',
+      (value) => {
+        expect(isKbWriteOutcome(value)).toBe(true);
+      },
+    );
+
+    it('returns false for empty string', () => {
+      expect(isKbWriteOutcome('')).toBe(false);
+    });
+
+    it('returns false for wrong case (Success)', () => {
+      expect(isKbWriteOutcome('Success')).toBe(false);
+    });
+
+    it('returns false for unknown literal', () => {
+      expect(isKbWriteOutcome('unknown_outcome')).toBe(false);
+    });
+
+    it('returns false for null', () => {
+      expect(isKbWriteOutcome(null)).toBe(false);
+    });
+
+    it('returns false for undefined', () => {
+      expect(isKbWriteOutcome(undefined)).toBe(false);
+    });
+
+    it('returns false for a number', () => {
+      expect(isKbWriteOutcome(42)).toBe(false);
+    });
+  });
+
+  describe('assertKbWriteOutcome', () => {
+    it.each(['success', 'conflict_retry_exhausted', 'format_rejected', 'wiki_disabled'] as const)(
+      'returns void for valid literal %s',
+      (value) => {
+        expect(() => assertKbWriteOutcome(value)).not.toThrow();
+      },
+    );
+
+    it('throws Error with stringified value for empty string', () => {
+      expect(() => assertKbWriteOutcome('')).toThrow(Error);
+      expect(() => assertKbWriteOutcome('')).toThrow('""');
+    });
+
+    it('throws Error containing the offending value for unknown literal', () => {
+      expect(() => assertKbWriteOutcome('bad_value')).toThrow('Invalid KbWriteOutcome');
+      expect(() => assertKbWriteOutcome('bad_value')).toThrow('"bad_value"');
+    });
+
+    it('throws Error containing JSON.stringify output for null', () => {
+      expect(() => assertKbWriteOutcome(null)).toThrow('null');
+    });
+
+    it('throws Error containing JSON.stringify output for undefined', () => {
+      // JSON.stringify(undefined) === undefined, so message ends without a value
+      expect(() => assertKbWriteOutcome(undefined)).toThrow('Invalid KbWriteOutcome');
+    });
+
+    it('throws Error containing JSON.stringify output for a number', () => {
+      expect(() => assertKbWriteOutcome(99)).toThrow('99');
+    });
+  });
+
+  describe('VALID_KB_WRITE_OUTCOMES keep-in-sync', () => {
+    it('contains exactly the same members as the KbWriteOutcome union', () => {
+      // This array's element type is checked against KbWriteOutcome at compile
+      // time: adding a 5th union member without updating the array fails tsc.
+      // Adding a 5th array element without updating the Set fails the size check.
+      const ALL: readonly KbWriteOutcome[] = [
+        'success',
+        'conflict_retry_exhausted',
+        'format_rejected',
+        'wiki_disabled',
+      ];
+      expect(VALID_KB_WRITE_OUTCOMES.size).toBe(ALL.length);
+      for (const v of ALL) {
+        expect(VALID_KB_WRITE_OUTCOMES.has(v)).toBe(true);
+      }
     });
   });
 
