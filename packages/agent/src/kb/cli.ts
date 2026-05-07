@@ -18,7 +18,7 @@
  * Exit codes:
  *   0  Success, or KB unavailable (not an error — skill continues without KB).
  *   1  Unexpected git or I/O failure.
- *   2  Validation failure (empty body, body too large, bad scope / conflicting flags).
+ *   2  Validation failure (empty body, body too large, bad scope / conflicting flags, invalid page name).
  *   3  Page file not found (wiki not bootstrapped).
  *   4  Conflict retries exhausted (push permanently rejected).
  *
