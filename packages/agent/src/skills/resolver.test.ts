@@ -65,6 +65,12 @@ describe('SECURITY_PREAMBLE', () => {
     expect(SECURITY_PREAMBLE).toContain('needs-human');
     expect(SECURITY_PREAMBLE).toContain('hijack');
   });
+
+  it('includes the KB semi-trusted DATA note', () => {
+    expect(SECURITY_PREAMBLE).toContain('Knowledge-base content');
+    expect(SECURITY_PREAMBLE).toContain('semi-trusted');
+    expect(SECURITY_PREAMBLE).toContain('KB-Global.md');
+  });
 });
 
 describe('resolveSkill — personaName validation', () => {
@@ -240,6 +246,18 @@ describe('resolveSkill — security preamble', () => {
       personaName: 'tinkerer',
     });
     expect(result.personaBody).toContain(soul.personaBody);
+  });
+
+  it('KB semi-trusted note appears in systemPrompt.stable for implement', () => {
+    const result = resolveSkill({
+      soul: makeBuiltinSoul(),
+      method: 'implement',
+      repo: 'owner/repo',
+      target_id: 1,
+      personaName: 'tinkerer',
+    });
+    expect(result.systemPrompt.stable).toContain('Knowledge-base content');
+    expect(result.systemPrompt.stable).toContain('semi-trusted');
   });
 });
 
