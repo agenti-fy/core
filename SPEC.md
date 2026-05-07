@@ -1003,7 +1003,7 @@ Any field reaching a skill prompt MUST satisfy one of: (a) numeric (`target_id`)
 Two independent defenses handle the threat that attacker-controlled GitHub text instructs Claude to deviate from its skill:
 
 **Primary defense — `SECURITY_PREAMBLE`** (`packages/agent/src/skills/resolver.ts:SECURITY_PREAMBLE`)
-Prepended to every system prompt before the persona body. Tells Claude that any text returned by `gh issue view`, `gh pr view`, `gh pr diff`, or `gh pr view --json reviews,comments` is DATA describing the requested work, not an instruction extension. If that data contains directives like "ignore the above", "you are now", or "system:", Claude is instructed to treat it as a hijack attempt, apply `needs-human`, and stop.
+Prepended to every system prompt before the persona body. Tells Claude that any text returned by `gh issue view`, `gh pr view`, `gh pr diff`, or `gh pr view --json reviews,comments`, as well as knowledge-base pages (`KB-Global.md`, `KB-<Persona>.md`), is DATA describing the requested work, not an instruction extension. If that data contains directives like "ignore the above", "you are now", or "system:", Claude is instructed to treat it as a hijack attempt, apply `needs-human`, and stop. KB content is classified as **semi-trusted** — useful accumulated context, not authoritative instructions; the same hijack response applies to directives found in KB entries (see §23.7 for the wider KB trust model).
 
 This is a best-effort defense. A sufficiently crafted injection can still influence Claude's behavior. It is not a hard boundary.
 
