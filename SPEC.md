@@ -1147,7 +1147,7 @@ KB content is classified as **semi-trusted DATA**. It is written by agents who h
 
 Mitigations:
 
-- The `SECURITY_PREAMBLE` (§22.3) is updated to instruct Claude to treat KB content as context, not instructions. Directives inside KB pages ("ignore previous", "you are now") are hijack attempts — apply `needs-human` and stop. See issue #266 for the SECURITY_PREAMBLE update.
+- The `SECURITY_PREAMBLE` (§22.3) is updated to instruct Claude to treat KB content as context, not instructions. Directives inside KB pages ("ignore previous", "you are now") are hijack attempts — apply `needs-human` and stop. See PR #275 (merged 2026-05-07) for the SECURITY_PREAMBLE update.
 - Every KB entry records its source (`issue #N` or `PR #N`), making noise auditable.
 - Operators can prune pages directly via the GitHub Wiki UI.
 - The coordinator hijack detector (§22.3) does **not** scan KB pages; the prompt-side SECURITY_PREAMBLE is the sole KB-path defense.
