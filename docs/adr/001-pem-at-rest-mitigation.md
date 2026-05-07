@@ -18,22 +18,26 @@ run (browser closed, OAuth timeout, Ctrl-C) resumes from the saved checkpoint
 at `~/.config/agentify/setup-<prefix>.json` (mode `0o600`, parent dir
 `0o700`, atomic-rename writes).
 
-**The problem**: after every per-persona completion the apps phase calls
-`saveFn(checkpointState)` directly (bypassing `stateForSave`) and writes the
-raw PEM private key to that checkpoint file.  While filesystem permissions
-offer a first line of defense, plaintext private keys at rest represent a
-material threat surface: backup tarballs, volume-mount mishaps, OS snapshots,
-`~/.config` sync tools, debugging copies passed around — any of these exposes
-9 high-value private keys in a single file.
+**The problem**: when the apps phase is implemented (tracked in #484), after
+every per-persona completion it will need to call `saveState(checkpointState)`
+to preserve resumability — which will write the raw PEM private key to the
+checkpoint file.  While filesystem permissions offer a first line of defense,
+plaintext private keys at rest represent a material threat surface: backup
+tarballs, volume-mount mishaps, OS snapshots, `~/.config` sync tools,
+debugging copies passed around — any of these exposes 9 high-value private
+keys in a single file.
 
 **The hard constraint**: GitHub's App Manifest conversion endpoint returns
 each PEM **exactly once**.  Strategies that discard the PEM without persisting
 it force the operator to rotate keys for all 9 Apps via the GitHub UI on every
 resume — a severe UX penalty and a significant operational risk.
 
-Precedent: `stateForSave()` already strips `anthropic.value` before every save
-(`packages/setup/src/index.ts:154-164`) with a regression test at
-`packages/setup/src/index.test.ts:209-224`.
+Convention: `WizardStateSchema.anthropic` is typed as `optional()` and v1
+always omits the field from the state file by convention (`state.ts:76-80`).
+This is absence-by-design for long-lived secrets that are rarely worth
+checkpointing — not an active strip function.  PEMs cannot follow the same
+pattern because they must survive process interrupts to preserve resumability;
+hence the encrypt-at-rest strategy below.
 
 ---
 
