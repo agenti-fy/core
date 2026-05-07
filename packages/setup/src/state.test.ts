@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { PassThrough } from 'node:stream';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { PassThrough } from 'node:stream';
 import { type IoStreams } from './prompts.js';
 import {
   WizardStateSchema,
@@ -657,6 +657,30 @@ describe('loadState — v1 → v2 migration', () => {
       io: io2,
     });
     expect(io2.output()).not.toContain('Migrated state file from v1 to v2');
+  });
+
+  it('prints the migration notice with the correct wording when io is supplied', async () => {
+    // Write a v1 fixture to disk.
+    const filePath = path.join(tmpDir, 'setup-v1-test.json');
+    await fs.writeFile(filePath, JSON.stringify(V1_FIXTURE), 'utf8');
+
+    // Stub IoStreams: unused stdin + stdout that collects written chunks.
+    const stdin = new PassThrough();
+    setImmediate(() => stdin.end());
+    const chunks: string[] = [];
+    const stdout = new PassThrough();
+    stdout.on('data', (chunk: Buffer) => chunks.push(chunk.toString('utf8')));
+
+    await loadState('v1-test', {
+      dir: tmpDir,
+      passphrase: 'super-secret-passphrase',
+      io: { stdin, stdout },
+    });
+
+    const output = chunks.join('');
+    expect(output).toContain(
+      'Migrated state file from v1 to v2 (secrets now encrypted at rest).',
+    );
   });
 });
 
