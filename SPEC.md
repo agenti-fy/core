@@ -268,7 +268,7 @@ type JobResult = {
   session_id: string | null;
   duration_ms: number;
   artifacts: {
-    // kb_writes is capped at 64 entries per job across all five slots (schema-enforced)
+    // kb_writes is capped at 64 entries per slot (schema-enforced; same cap applied uniformly to all five slots)
     plan?:           { child_issues: number[]; kb_writes?: KbWriteRecord[] };
     implement?:      { branch: string; pr_number: number; kb_writes?: KbWriteRecord[] };
     review?:         { review_id: number; verdict: 'approved'|'changes_requested'|'commented'; kb_writes?: KbWriteRecord[] };
