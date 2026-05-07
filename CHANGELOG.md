@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Lift the `kb_writes` cap (64) and its error message into the exported `KB_WRITES_MAX` / `KB_WRITES_MAX_MSG` constants in `packages/shared/src/rpc.ts`. Removes 5× duplication of the literal flagged in PR #291. Closes #336.
 - Drop the now-unreachable `.endsWith('.md')` refine on `KB_GLOBAL_PAGE` (#330). The strict allowlist regex landed in #328 already excludes `.`; invalid inputs still throw, just with the regex error message rather than the suffix-refine one.
 - **Tool scoping**: deny `Task`, `WebFetch`, `WebSearch` for all five methods; restrict `plan` and `review` to a read-only `Bash` allowlist (`gh *`, `git log/show/diff/rev-parse`, `ls`, `cat`). Closes #65.
 - `POST /reset` now hot-reloads `CLAUDE_MAX_TURNS_*` per-method turn caps (#93) and `CLAUDE_TIMEOUT_MS` (#103) without a process restart; static-at-boot settings (host, port, coordinator URL, agent public URL, heartbeat interval, credentials) still require a restart.

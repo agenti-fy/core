@@ -3,6 +3,7 @@ import {
   DispatchRequestSchema,
   JobArtifactsSchema,
   JobResultSchema,
+  KB_WRITES_MAX_MSG,
   KbWriteRecordSchema,
   RegisterRequestSchema,
 } from './rpc.js';
@@ -329,7 +330,7 @@ describe('JobArtifactsSchema kb_writes slots', () => {
     const result = JobArtifactsSchema.safeParse(input);
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0]?.message).toContain('kb_writes capped at 64 entries per job');
+      expect(result.error.issues[0]?.message).toContain(KB_WRITES_MAX_MSG);
     }
   });
 });
