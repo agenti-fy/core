@@ -15,7 +15,7 @@ A multi-agent software development system in TypeScript, deployed as a small set
 
 ## 1. Motivation
 
-The previous iteration (`../agenti-fi`) embedded the entire orchestration loop, agent FSMs, knowledge base, plugins, CLI, dashboard, and rate limiter into one monolith. This iteration deliberately strips the system to its load-bearing pieces:
+The previous iteration (`../agenti-fi`) embedded the entire orchestration loop, agent FSMs, knowledge base (KB returns in §23), plugins, CLI, dashboard, and rate limiter into one monolith. This iteration deliberately strips the system to its load-bearing pieces:
 
 - **Service-oriented**: each agent is its own container with a tiny RPC surface.
 - **Coordinator is dumb on purpose**: a state machine, not an SDK consumer. It polls GitHub, holds the source-of-truth DB, and dispatches.
@@ -66,7 +66,7 @@ A single Docker image (`agentify/agent`). Each running container is one *soul* �
 
 - On boot: parse SOUL.md, validate env, register with coordinator, expose HTTP API.
 - On RPC: flip status to BUSY, run the matching skill via Claude Code SDK using the (per-agent, per-repo) session, persist resulting session_id back to the coordinator, flip to IDLE (or FAILURE).
-- Maintain its own per-repo bare clone + per-job worktree at `/workspaces/<org>/<repo>/`.
+- Maintain its own per-repo bare clone + per-job worktree at `/workspaces/<org>/<repo>/`; also a wiki bare clone (`.kb-bare/`) and per-job wiki worktree (`.kb/<job_id>/`) at the same path when KB is enabled (→ §23).
 
 #### Status
 
@@ -968,7 +968,7 @@ agenti-fy/
 5. **End-to-end** — first run against a sandbox GitHub repo with the full nine-agent team.
 6. **Observability** — Prometheus, pino logs, `/jobs/:id`, SSE log stream.
 7. **TUI** — `@agentify/tui` package: dashboard, agents, jobs, repos, logs screens; halt confirmation; non-TTY `agentify status` fallback.
-8. **Polish** — `/reset`, stale-job sweeper, halt label, plan auto-close loop, docs.
+8. **Polish** — `/reset`, stale-job sweeper, halt label, plan auto-close loop, docs, KB (per-repo wiki, see §23).
 
 ## 22. Security model
 
