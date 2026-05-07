@@ -19,7 +19,12 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { z } from 'zod';
 import { BUILTIN_PERSONAS } from '@agentify/shared';
-import { EncryptedValueSchema } from './crypto.js';
+import {
+  encryptValue,
+  decryptValue,
+  EncryptedValueSchema,
+  type EncryptedValue,
+} from './crypto.js';
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -153,20 +158,68 @@ export type WizardState = z.infer<typeof WizardStateSchema>;
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Strip long-lived secrets before writing state to disk (v1 policy: #426/#430).
+ * Strip long-lived secrets and encrypt sensitive fields before writing state to
+ * disk.
  *
- * `anthropic.value` is held in memory so the finalize phase can render it to
- * `.env`, but it must never be written to the checkpoint file.  On `resume`,
- * if `state.anthropic` is absent the wizard re-prompts — that is the correct
- * behaviour per the spec.
+ * Always strips `anthropic.value` (v1 policy: #426/#430) — the finalize phase
+ * uses the in-memory value; it must never reach the checkpoint file.
+ *
+ * When `passphrase` is supplied, also encrypts `pem`, `clientSecret`, and
+ * `webhookSecret` on the coordinator and every persona via {@link encryptValue}.
+ * When `passphrase` is omitted the fields are written as-is (backwards-
+ * compatible for callers that haven't yet wired a passphrase — e.g.
+ * `driver/apps.ts` until its companion subtask is done).
  *
  * This is the single source of sanitization policy: every call site that
- * persists wizard state (orchestrator top-level saves in `index.ts` AND
- * per-persona checkpoints in `driver/apps.ts`) must pass state through this
- * function before handing it to `saveState`.
+ * persists wizard state must pass state through this function before calling
+ * {@link saveState}.
+ *
+ * @param state      Wizard state to sanitize (not mutated).
+ * @param passphrase When provided, sensitive credential fields are encrypted.
  */
-export function stateForSave(state: WizardState): WizardState {
-  return { ...state, anthropic: undefined };
+export function stateForSave(state: WizardState, passphrase?: string): WizardState {
+  const stripped: WizardState = { ...state, anthropic: undefined };
+  if (!passphrase) return stripped;
+
+  return {
+    ...stripped,
+    coordinator: stripped.coordinator
+      ? encryptPersonaCreds(stripped.coordinator, passphrase)
+      : undefined,
+    personas: Object.fromEntries(
+      Object.entries(stripped.personas).map(([k, v]) => [
+        k,
+        v ? encryptPersonaCreds(v, passphrase) : v,
+      ]),
+    ),
+  };
+}
+
+/**
+ * Decrypt encrypted credential fields in a state object loaded from disk.
+ *
+ * Walks `state.coordinator` and every entry in `state.personas`, calling
+ * {@link decryptValue} on any field that matches {@link EncryptedValueSchema}
+ * and leaving plaintext strings untouched (defensive: supports v1 migration
+ * path where a file may have a mix of plaintext and encrypted fields).
+ *
+ * @param state      Parsed wizard state (may contain {@link EncryptedValue} fields).
+ * @param passphrase Passphrase used during encryption.
+ * @throws {@link DecryptError} if any field fails AES-GCM authentication.
+ */
+export function decryptStateOnLoad(state: WizardState, passphrase: string): WizardState {
+  return {
+    ...state,
+    coordinator: state.coordinator
+      ? decryptPersonaCreds(state.coordinator, passphrase)
+      : undefined,
+    personas: Object.fromEntries(
+      Object.entries(state.personas).map(([k, v]) => [
+        k,
+        v ? decryptPersonaCreds(v, passphrase) : v,
+      ]),
+    ),
+  };
 }
 
 /** Options accepted by {@link loadState}, {@link saveState}, and {@link clearState}. */
@@ -176,6 +229,15 @@ export interface StateOptions {
    * Defaults to `~/.config/agentify`.
    */
   dir?: string;
+  /**
+   * When supplied, {@link loadState} decrypts `EncryptedValue`-shaped
+   * credential fields (pem, clientSecret, webhookSecret) after parsing.
+   *
+   * If the parsed state contains any encrypted field and `passphrase` is
+   * **not** supplied, {@link loadState} throws an error rather than returning
+   * opaque ciphertext objects to the caller.
+   */
+  passphrase?: string;
 }
 
 /**
@@ -218,6 +280,20 @@ export async function loadState(
     throw new Error(
       `State file at "${filePath}" does not match the expected schema: ` +
         result.error.message,
+    );
+  }
+
+  const passphrase = opts?.passphrase;
+  if (passphrase) {
+    return decryptStateOnLoad(result.data, passphrase);
+  }
+
+  // Guard: if any credential field is an EncryptedValue but no passphrase was
+  // supplied, fail loudly rather than returning ciphertext objects to the caller.
+  if (hasEncryptedFields(result.data)) {
+    throw new Error(
+      `State file at "${filePath}" contains encrypted fields — a passphrase is required. ` +
+        'Re-run agentify-setup with the passphrase used when the state was saved.',
     );
   }
 
@@ -286,4 +362,68 @@ function isEnoent(err: unknown): boolean {
     'code' in err &&
     (err as NodeJS.ErrnoException).code === 'ENOENT'
   );
+}
+
+/** Return `true` when `value` is an {@link EncryptedValue} object. */
+function isEncryptedValue(value: unknown): value is EncryptedValue {
+  return EncryptedValueSchema.safeParse(value).success;
+}
+
+/**
+ * Encrypt sensitive fields in a single set of persona credentials.
+ * Already-encrypted fields are left untouched (idempotent / defensive).
+ */
+function encryptPersonaCreds(creds: PersonaCreds, passphrase: string): PersonaCreds {
+  return {
+    ...creds,
+    pem: typeof creds.pem === 'string'
+      ? encryptValue(creds.pem, passphrase)
+      : creds.pem,
+    clientSecret: typeof creds.clientSecret === 'string'
+      ? encryptValue(creds.clientSecret, passphrase)
+      : creds.clientSecret,
+    webhookSecret:
+      creds.webhookSecret !== null && typeof creds.webhookSecret === 'string'
+        ? encryptValue(creds.webhookSecret, passphrase)
+        : creds.webhookSecret,
+  };
+}
+
+/**
+ * Decrypt sensitive fields in a single set of persona credentials.
+ * Plaintext strings are left untouched (defensive: supports v1 migration path).
+ */
+function decryptPersonaCreds(creds: PersonaCreds, passphrase: string): PersonaCreds {
+  return {
+    ...creds,
+    pem: isEncryptedValue(creds.pem)
+      ? decryptValue(creds.pem, passphrase)
+      : creds.pem,
+    clientSecret: isEncryptedValue(creds.clientSecret)
+      ? decryptValue(creds.clientSecret, passphrase)
+      : creds.clientSecret,
+    webhookSecret:
+      creds.webhookSecret !== null && isEncryptedValue(creds.webhookSecret)
+        ? decryptValue(creds.webhookSecret, passphrase)
+        : creds.webhookSecret,
+  };
+}
+
+/**
+ * Return `true` if any credential field in `state` is an {@link EncryptedValue}.
+ * Used by {@link loadState} to detect encrypted state files that require a passphrase.
+ */
+function hasEncryptedFields(state: WizardState): boolean {
+  const checkCreds = (creds: PersonaCreds): boolean =>
+    isEncryptedValue(creds.pem) ||
+    isEncryptedValue(creds.clientSecret) ||
+    (creds.webhookSecret !== null && isEncryptedValue(creds.webhookSecret));
+
+  if (state.coordinator && checkCreds(state.coordinator)) return true;
+
+  for (const creds of Object.values(state.personas)) {
+    if (creds && checkCreds(creds)) return true;
+  }
+
+  return false;
 }

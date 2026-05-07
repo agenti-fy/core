@@ -129,6 +129,8 @@ function makeDeps(overrides: Partial<RunDeps> = {}): TestDeps {
     saveState: vi.fn(async (state: WizardState) => {
       savedStates.push(state);
     }),
+    // Inject a fixed passphrase so tests never touch the masked-prompt loop.
+    passphraseProvider: vi.fn(async () => 'fixed-test-passphrase'),
   };
 
   // Apply overrides (except io which always stays as the captured local)
@@ -140,6 +142,7 @@ function makeDeps(overrides: Partial<RunDeps> = {}): TestDeps {
   if (overrides.loadState !== undefined) deps.loadState = overrides.loadState;
   if (overrides.saveState !== undefined) deps.saveState = overrides.saveState;
   if (overrides.spawn !== undefined) deps.spawn = overrides.spawn;
+  if (overrides.passphraseProvider !== undefined) deps.passphraseProvider = overrides.passphraseProvider;
 
   return deps;
 }
@@ -241,7 +244,9 @@ describe('run — resume', () => {
 
     await run(args('resume', { prefix: 'test-prefix' }), deps);
 
-    expect(loadFn).toHaveBeenCalledWith('test-prefix', undefined);
+    // loadState is called with a StateOptions that includes the session passphrase
+    // (injected by the test's passphraseProvider stub).
+    expect(loadFn).toHaveBeenCalledWith('test-prefix', { passphrase: 'fixed-test-passphrase' });
   });
 
   it('does not load state when --prefix is absent', async () => {
