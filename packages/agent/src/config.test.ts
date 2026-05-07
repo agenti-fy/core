@@ -56,9 +56,11 @@ describe('loadConfig — kbGlobalPage validation', () => {
   });
 
   it('rejects a page name ending with .md', () => {
+    // The `.endsWith('.md')` refine is gone (#330); the regex rejects first
+    // because `.` is not in the `[A-Za-z0-9 _-]` allowlist.
     expect(() =>
       loadConfig({ ...BASE_ENV, KB_GLOBAL_PAGE: 'KB-Global.md' }),
-    ).toThrow(/must not end with .md/);
+    ).toThrow(/alphanumeric/);
   });
 
   it('accepts a page name with no slash and no .md suffix', () => {

@@ -92,18 +92,18 @@ const ConfigSchema = z.object({
    * any accepted value is safe to pass into git argv, filesystem paths, commit
    * messages, and GitHub wiki slugs without per-call-site re-escaping.
    * See #264 for the full security rationale and Option-A decision record.
-   * The `.md` suffix refine is kept separate so its error message stays specific.
    * WikiManager appends `.md` itself.
    */
   kbGlobalPage: z
     .string()
     // #264 — tightened from loose refine checks to a strict allowlist regex so
     // shell metacharacters, path separators, and leading dots are impossible.
+    // The `.endsWith('.md')` refine that previously lived here was removed in
+    // #330: the regex already excludes `.`, so the refine was unreachable.
     .regex(
       /^[A-Za-z0-9 _-]+$/,
       'KB_GLOBAL_PAGE must contain only alphanumeric characters, spaces, underscores, and dashes',
     )
-    .refine((s) => !s.endsWith('.md'), 'KB_GLOBAL_PAGE must not end with .md')
     .default('KB-Global'),
 
   /**
