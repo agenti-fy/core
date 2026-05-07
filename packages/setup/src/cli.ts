@@ -31,6 +31,11 @@ export interface CliArgs {
   /** `--dry-run` — write generated .env to stdout instead of disk. */
   dryRun: boolean;
   /**
+   * `--env-out <path>` — override the default `.env` output path.
+   * Defaults to `<cwd>/.env` when not provided.
+   */
+  envOut: string | undefined;
+  /**
    * `--state-file <path>` — override the default state file location.
    * Mutually exclusive with `--dry-run`.
    */
@@ -94,6 +99,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     prefix: undefined,
     repo: undefined,
     dryRun: false,
+    envOut: undefined,
     stateFile: undefined,
     showHelp: false,
     showVersion: false,
@@ -133,6 +139,17 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     }
     if (a.startsWith('--repo=')) {
       args.repo = a.slice('--repo='.length);
+      continue;
+    }
+
+    if (a === '--env-out') {
+      const [v, newI] = consumeValue(a, argv, i);
+      args.envOut = v;
+      i = newI;
+      continue;
+    }
+    if (a.startsWith('--env-out=')) {
+      args.envOut = a.slice('--env-out='.length);
       continue;
     }
 

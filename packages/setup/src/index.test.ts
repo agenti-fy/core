@@ -7,7 +7,7 @@
 
 import { PassThrough } from 'node:stream';
 import { describe, it, expect, vi, type MockedFunction } from 'vitest';
-import { run, type PhaseFn, type RunDeps } from './index.js';
+import { run, type PhaseFn, type RunDeps, type FinalizeDeps, type VerifyDeps } from './index.js';
 import { PromptCancelled } from './prompts.js';
 import type { CliArgs } from './cli.js';
 import type { IoStreams } from './prompts.js';
@@ -22,6 +22,7 @@ const initArgs: CliArgs = {
   prefix: undefined,
   repo: undefined,
   dryRun: false,
+  envOut: undefined,
   stateFile: undefined,
   showHelp: false,
   showVersion: false,
@@ -84,6 +85,22 @@ function stubPhase(patch: Partial<WizardState> = {}): MockedFunction<PhaseFn> {
   return vi.fn(impl);
 }
 
+/** Build a stub runFinalize that records calls and returns an envPath. */
+function stubFinalize(
+  envPath = '/stub/.env',
+): MockedFunction<(deps: FinalizeDeps) => Promise<{ envPath: string }>> {
+  const impl = async (_deps: FinalizeDeps): Promise<{ envPath: string }> => ({ envPath });
+  return vi.fn(impl);
+}
+
+/** Build a stub runVerify that records calls and returns exitCode. */
+function stubVerify(
+  exitCode = 0,
+): MockedFunction<(deps: VerifyDeps) => Promise<number>> {
+  const impl = async (_deps: VerifyDeps): Promise<number> => exitCode;
+  return vi.fn(impl);
+}
+
 /** A concrete holder for the deps used in tests. */
 interface TestDeps extends RunDeps {
   io: IoStreams & { output: () => string };
@@ -97,7 +114,8 @@ function makeDeps(overrides: Partial<RunDeps> = {}): TestDeps {
   const preamble = stubPreamble();
   const apps = stubPhase();
   const anthropic = stubPhase();
-  const finalize = stubPhase();
+  const finalize = stubFinalize();
+  const verify = stubVerify();
 
   const deps: TestDeps = {
     io,
@@ -106,6 +124,7 @@ function makeDeps(overrides: Partial<RunDeps> = {}): TestDeps {
     runApps: apps,
     runAnthropic: anthropic,
     runFinalize: finalize,
+    runVerify: verify,
     loadState: vi.fn(async () => null),
     saveState: vi.fn(async (state: WizardState) => {
       savedStates.push(state);
@@ -117,6 +136,7 @@ function makeDeps(overrides: Partial<RunDeps> = {}): TestDeps {
   if (overrides.runApps !== undefined) deps.runApps = overrides.runApps;
   if (overrides.runAnthropic !== undefined) deps.runAnthropic = overrides.runAnthropic;
   if (overrides.runFinalize !== undefined) deps.runFinalize = overrides.runFinalize;
+  if (overrides.runVerify !== undefined) deps.runVerify = overrides.runVerify;
   if (overrides.loadState !== undefined) deps.loadState = overrides.loadState;
   if (overrides.saveState !== undefined) deps.saveState = overrides.saveState;
   if (overrides.spawn !== undefined) deps.spawn = overrides.spawn;
@@ -145,7 +165,7 @@ describe('run — init', () => {
       runPreamble: vi.fn(async () => { order.push('preamble'); return PREAMBLE_RESULT; }),
       runApps: vi.fn(async () => { order.push('apps'); return {}; }),
       runAnthropic: vi.fn(async () => { order.push('anthropic'); return {}; }),
-      runFinalize: vi.fn(async () => { order.push('finalize'); return {}; }),
+      runFinalize: vi.fn(async () => { order.push('finalize'); return { envPath: '/stub/.env' }; }),
     });
 
     await run(args('init'), deps);
@@ -254,7 +274,7 @@ describe('run — resume', () => {
       runPreamble: vi.fn(async () => { order.push('preamble'); return PREAMBLE_RESULT; }),
       runApps: vi.fn(async () => { order.push('apps'); return {}; }),
       runAnthropic: vi.fn(async () => { order.push('anthropic'); return {}; }),
-      runFinalize: vi.fn(async () => { order.push('finalize'); return {}; }),
+      runFinalize: vi.fn(async () => { order.push('finalize'); return { envPath: '/stub/.env' }; }),
     });
 
     await run(args('resume'), deps);
@@ -265,26 +285,45 @@ describe('run — resume', () => {
 // ── verify subcommand ─────────────────────────────────────────────────────────
 
 describe('run — verify', () => {
-  it('returns 0 on success', async () => {
-    const deps = makeDeps();
+  it('returns 0 when runVerify returns 0', async () => {
+    const deps = makeDeps({ runVerify: stubVerify(0) });
     const code = await run(args('verify'), deps);
     expect(code).toBe(0);
   });
 
-  it('calls preamble and finalize but NOT apps or anthropic', async () => {
+  it('returns 1 when runVerify returns 1', async () => {
+    const deps = makeDeps({ runVerify: stubVerify(1) });
+    const code = await run(args('verify'), deps);
+    expect(code).toBe(1);
+  });
+
+  it('calls preamble and runVerify but NOT apps, anthropic, or runFinalize', async () => {
     const deps = makeDeps();
     await run(args('verify'), deps);
 
     expect(deps.runPreamble).toHaveBeenCalledOnce();
-    expect(deps.runFinalize).toHaveBeenCalledOnce();
+    expect(deps.runVerify).toHaveBeenCalledOnce();
     expect(deps.runApps).not.toHaveBeenCalled();
     expect(deps.runAnthropic).not.toHaveBeenCalled();
+    expect(deps.runFinalize).not.toHaveBeenCalled();
   });
 
-  it('saves state twice (after preamble and after finalize)', async () => {
+  it('saves state once (after preamble only)', async () => {
     const deps = makeDeps();
     await run(args('verify'), deps);
-    expect(deps.saveState).toHaveBeenCalledTimes(2);
+    // verify: preamble saves (1), then runVerify is called and returns — no more saves
+    expect(deps.saveState).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes --env-out as envPath to runVerify when provided', async () => {
+    let capturedDeps: VerifyDeps | null = null;
+    const deps = makeDeps({
+      runVerify: vi.fn(async (d: VerifyDeps) => { capturedDeps = d; return 0; }),
+    });
+    await run(args('verify', { envOut: '/custom/.env' }), deps);
+    expect(capturedDeps).not.toBeNull();
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    expect((capturedDeps! as VerifyDeps).envPath).toBe('/custom/.env');
   });
 });
 

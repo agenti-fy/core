@@ -4,115 +4,13 @@ import { join, dirname } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { BUILTIN_PERSONAS } from '@agentify/shared';
 import { renderEnv, WizardConfigSchema, type WizardConfig } from './env-renderer.js';
+import { parseDotenv } from './dotenv.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 /** Make a realistic multi-line PEM for a given label (not a real key). */
 function fakePem(label: string): string {
   return `-----BEGIN RSA PRIVATE KEY-----\nMII${label.toUpperCase().slice(0, 8).padEnd(8, 'A')}\n-----END RSA PRIVATE KEY-----`;
-}
-
-/**
- * Minimal inline dotenv parser: handles single-quoted multi-line values,
- * double-quoted values (with basic escape sequences), bare values, and comment
- * lines. Returns a Record<string, string> with unquoted values.
- *
- * No runtime dependencies — intentionally written inline per issue spec.
- */
-function parseDotenv(content: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  let i = 0;
-  const lines = content.split('\n');
-
-  while (i < lines.length) {
-    const rawLine = lines[i];
-    if (rawLine === undefined) {
-      i++;
-      continue;
-    }
-    const trimmed = rawLine.trim();
-    // Skip blank lines and comment lines.
-    if (trimmed === '' || trimmed.startsWith('#')) {
-      i++;
-      continue;
-    }
-
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) {
-      i++;
-      continue;
-    }
-
-    const key = trimmed.slice(0, eqIdx).trim();
-    const rest = trimmed.slice(eqIdx + 1);
-
-    // Single-quoted multi-line block: accumulate until the closing unescaped '.
-    if (rest.startsWith("'")) {
-      // Walk forward to find the matching closing single-quote.
-      // Escaped single-quotes appear as '\'' (POSIX quoting).
-      const valueParts: string[] = [];
-      let chunk = rest.slice(1); // strip opening '
-
-      for (;;) {
-        // Does this chunk contain a closing ' not preceded by \'\ ?
-        const closeIdx = chunk.indexOf("'");
-        if (closeIdx !== -1) {
-          // Check for POSIX-escaped embedded quote: '\''
-          // quoteValue encodes each ' as '\'' (close-quote, \-escaped-quote, reopen-quote).
-          // After the closing ' at closeIdx, the POSIX escape is \'' (three chars).
-          valueParts.push(chunk.slice(0, closeIdx));
-          const after = chunk.slice(closeIdx + 1);
-          if (after.startsWith("\\''")) {
-            // POSIX escaped '\'' → literal ' then reopen single-quoting.
-            valueParts.push("'");
-            chunk = after.slice(3); // skip \'' (escape-char, literal-quote, reopen-quote)
-          } else {
-            // Real closing quote — done.
-            break;
-          }
-        } else {
-          // No closing quote on this line — consume the newline and advance.
-          valueParts.push(chunk);
-          valueParts.push('\n');
-          i++;
-          const nextLine = lines[i];
-          chunk = nextLine ?? '';
-        }
-      }
-
-      result[key] = valueParts.join('');
-      i++;
-      continue;
-    }
-
-    // Double-quoted value: single-line only, handle \" and \\.
-    if (rest.startsWith('"')) {
-      let value = '';
-      let j = 1;
-      while (j < rest.length) {
-        const ch = rest[j];
-        if (ch === '\\' && j + 1 < rest.length) {
-          const next = rest[j + 1];
-          value += next === '"' ? '"' : next === '\\' ? '\\' : `\\${next}`;
-          j += 2;
-        } else if (ch === '"') {
-          break;
-        } else {
-          value += ch;
-          j++;
-        }
-      }
-      result[key] = value;
-      i++;
-      continue;
-    }
-
-    // Bare value.
-    result[key] = rest.trim();
-    i++;
-  }
-
-  return result;
 }
 
 // ── Fixture config (deterministic) ────────────────────────────────────────
