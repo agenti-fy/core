@@ -27,6 +27,7 @@ function printHelp(): void {
       `  --prefix <s>           Name prefix for the ten GitHub Apps (e.g. "myorg")\n` +
       `  --repo <owner/name>    Target repository (e.g. "acme/my-project")\n` +
       `  --dry-run              Print the generated .env to stdout; do not write to disk\n` +
+      `  --env-out <path>       Write the generated .env to <path> (default: <cwd>/.env)\n` +
       `  --state-file <path>    Override the default state file location\n` +
       `  -V, --version          Print version and exit\n` +
       `  -h, --help             Show this help\n` +
@@ -34,7 +35,7 @@ function printHelp(): void {
       `Subcommands and flags may be combined:\n` +
       `  agentify-setup init --prefix myorg --repo acme/my-project\n` +
       `  agentify-setup resume --state-file /tmp/setup.json\n` +
-      `  agentify-setup verify --dry-run\n` +
+      `  agentify-setup verify --env-out /etc/agentify/.env\n` +
       `\n` +
       `  🎯 The Orchestrator · agentify-setup wizard\n`,
   );

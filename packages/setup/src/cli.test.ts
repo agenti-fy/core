@@ -24,6 +24,7 @@ describe('defaults', () => {
       prefix: undefined,
       repo: undefined,
       dryRun: false,
+      envOut: undefined,
       stateFile: undefined,
       showHelp: false,
       showVersion: false,

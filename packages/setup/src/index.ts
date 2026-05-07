@@ -7,8 +7,9 @@
  * {@link RunDeps}         – injectable dependencies (for testing).
  * {@link PhaseOpts}       – common options bag passed to every driver phase.
  * {@link runApps}         – per-persona App-creation loop (driver/apps.ts).
- * {@link runAnthropic}    – Anthropic auth + tunables driver (#430).
- * {@link runFinalize}     – stub for the .env write + verify phase (#431).
+ * {@link runAnthropic}    – Anthropic auth + tunables driver (driver/anthropic.ts).
+ * {@link runFinalize}     – .env write driver (driver/finalize.ts).
+ * {@link runVerify}       – verify subcommand driver (driver/finalize.ts).
  *
  * Phase contract
  * --------------
@@ -16,14 +17,6 @@
  * `Promise<Partial<WizardState>>`.  The orchestrator merges the returned
  * partial into the running state and calls `saveState` after each phase so
  * that a crash or Ctrl-C loses at most one phase of work.
- *
- * Stub implementations
- * --------------------
- * `runFinalize` is an exported stub — it satisfies the
- * {@link PhaseFn} interface and passes all type checks, but does nothing.
- * Issue #431 will replace the function body.
- * `runApps` is the real implementation from driver/apps.ts (#428);
- * `runAnthropic` is the real implementation from driver/anthropic.ts (#430).
  */
 
 import * as os from 'node:os';
@@ -35,6 +28,12 @@ import { loadState, saveState, type WizardState } from './state.js';
 import { runPreamble, type GhExec } from './driver/preamble.js';
 import { runApps } from './driver/apps.js';
 import { runAnthropic } from './driver/anthropic.js';
+import {
+  runFinalize as driverRunFinalize,
+  runVerify as driverRunVerify,
+  type FinalizeDeps,
+  type VerifyDeps,
+} from './driver/finalize.js';
 
 // ── Phase types ───────────────────────────────────────────────────────────────
 
@@ -67,24 +66,16 @@ export type PhaseFn = (opts: PhaseOpts) => Promise<Partial<WizardState>>;
 // index.ts remains the single import point for the orchestrator and its tests.
 export { runApps };
 
-// runAnthropic — real implementation from driver/anthropic.ts (#430).
+// runAnthropic — real implementation from driver/anthropic.ts.
 // Re-exported here so index.ts remains the single import point for the
 // orchestrator and its tests.
 export { runAnthropic };
 
-/**
- * **Stub — implemented by #431 (`driver/finalize.ts`).**
- *
- * Renders the collected state to a `.env` file (or stdout when `--dry-run`)
- * and, in verify mode, checks that all Apps are still reachable and
- * installations are active.
- *
- * Returns an empty partial (all writes are side-effects, not state mutations).
- */
-export const runFinalize: PhaseFn = async (_opts) => {
-  // TODO (#431): implement .env rendering and verify subcommand.
-  return {};
-};
+// runFinalize / runVerify — real implementations from driver/finalize.ts.
+// Re-exported here for test injection and direct use by the orchestrator.
+export { driverRunFinalize as runFinalize, driverRunVerify as runVerify };
+// Also re-export the dep types so callers can reference them.
+export type { FinalizeDeps, VerifyDeps };
 
 // ── Injectable dependencies ───────────────────────────────────────────────────
 
@@ -105,8 +96,10 @@ export interface RunDeps {
   runApps?: PhaseFn;
   /** Overrides the Anthropic phase. */
   runAnthropic?: PhaseFn;
-  /** Overrides the Finalize phase. */
-  runFinalize?: PhaseFn;
+  /** Overrides the Finalize phase (init/resume path). */
+  runFinalize?: (deps: FinalizeDeps) => Promise<{ envPath: string }>;
+  /** Overrides the Verify phase (verify subcommand path). */
+  runVerify?: (deps: VerifyDeps) => Promise<number>;
   /** Overrides the state-loader (useful for hermetic tests). */
   loadState?: (prefix: string, opts?: { dir?: string }) => Promise<WizardState | null>;
   /** Overrides the state-writer (useful for hermetic tests). */
@@ -208,7 +201,8 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
   const preambleFn = deps?.runPreamble ?? runPreamble;
   const appsFn = deps?.runApps ?? runApps;
   const anthropicFn = deps?.runAnthropic ?? runAnthropic;
-  const finalizeFn = deps?.runFinalize ?? runFinalize;
+  const finalizeFn = deps?.runFinalize ?? driverRunFinalize;
+  const verifyFn = deps?.runVerify ?? driverRunVerify;
 
   // State files live in a directory; --state-file's dirname overrides the default.
   const stateDir = args.stateFile ? path.dirname(args.stateFile) : undefined;
@@ -250,12 +244,13 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
     }
     await saveFn(stateForSave(state), stateOpts);
 
-    // verify subcommand skips Apps and Anthropic phases.
+    // verify subcommand: run verification against an existing .env, skipping
+    // the App-creation and Anthropic phases.
     if (args.subcommand === 'verify') {
-      const finalizeResult = await finalizeFn({ state, io });
-      state = mergeState(state, finalizeResult);
-      await saveFn(stateForSave(state), stateOpts);
-      return 0;
+      // exactOptionalPropertyTypes: only include envPath when envOut is provided.
+      const verifyOpts: VerifyDeps = { io };
+      if (args.envOut !== undefined) verifyOpts.envPath = args.envOut;
+      return await verifyFn(verifyOpts);
     }
 
     // Phase 2: Apps.
@@ -268,9 +263,12 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
     state = mergeState(state, anthropicResult);
     await saveFn(stateForSave(state), stateOpts);
 
-    // Phase 4: Finalize.
-    const finalizeResult = await finalizeFn({ state, io });
-    state = mergeState(state, finalizeResult);
+    // Phase 4: Finalize — write the .env file (or print if --dry-run).
+    // exactOptionalPropertyTypes: only include optional fields when defined.
+    const finalizeOpts: FinalizeDeps = { state, io };
+    if (args.dryRun) finalizeOpts.dryRun = true;
+    if (args.envOut !== undefined) finalizeOpts.envOut = args.envOut;
+    await finalizeFn(finalizeOpts);
     await saveFn(stateForSave(state), stateOpts);
 
     return 0;
