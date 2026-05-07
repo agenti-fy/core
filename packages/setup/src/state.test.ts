@@ -1,0 +1,358 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import {
+  WizardStateSchema,
+  PersonaCredsSchema,
+  loadState,
+  saveState,
+  clearState,
+  type WizardState,
+  type PersonaCreds,
+} from './state.js';
+
+// ── Fixtures ──────────────────────────────────────────────────────────────────
+
+const SAMPLE_CREDS: PersonaCreds = {
+  appId: 12345,
+  slug: 'my-prefix-orchestrator',
+  name: 'My Prefix Orchestrator',
+  htmlUrl: 'https://github.com/apps/my-prefix-orchestrator',
+  pem: '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----\n',
+  clientId: 'Iv1.abc12345678',
+  clientSecret: 's3cr3t',
+  webhookSecret: 'wh-secret',
+  installationId: 78901,
+  githubUser: 'my-prefix-orchestrator[bot]',
+};
+
+const MINIMAL_STATE: WizardState = {
+  version: 1,
+  prefix: 'my-prefix',
+  repo: { owner: 'alice', name: 'sandbox' },
+  ownerType: 'personal',
+  coordinator: undefined,
+  personas: {},
+  anthropic: undefined,
+  tunables: undefined,
+};
+
+const FULL_STATE: WizardState = {
+  version: 1,
+  prefix: 'my-prefix',
+  repo: {
+    owner: 'alice',
+    name: 'sandbox',
+    ownerId: 1001,
+    repoId: 9999,
+  },
+  ownerType: 'organization',
+  coordinator: SAMPLE_CREDS,
+  personas: {
+    orchestrator: SAMPLE_CREDS,
+    conductor: { ...SAMPLE_CREDS, slug: 'my-prefix-conductor', appId: 22222 },
+  },
+  anthropic: undefined,
+  tunables: { LOG_LEVEL: 'debug', MAX_RETRIES: 3 },
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function makeTmpDir(): Promise<string> {
+  return fs.mkdtemp(path.join(os.tmpdir(), 'agentify-state-test-'));
+}
+
+// ── WizardStateSchema — basic validation ──────────────────────────────────────
+
+describe('WizardStateSchema', () => {
+  it('accepts a minimal valid state (no coordinator, empty personas)', () => {
+    const result = WizardStateSchema.safeParse(MINIMAL_STATE);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a full valid state with coordinator, partial personas, tunables', () => {
+    const result = WizardStateSchema.safeParse(FULL_STATE);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects state with wrong version', () => {
+    const result = WizardStateSchema.safeParse({ ...MINIMAL_STATE, version: 2 });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects state missing required prefix', () => {
+    const { prefix: _prefix, ...rest } = MINIMAL_STATE;
+    const result = WizardStateSchema.safeParse(rest);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects state with unknown ownerType', () => {
+    const result = WizardStateSchema.safeParse({
+      ...MINIMAL_STATE,
+      ownerType: 'enterprise',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('PersonaCredsSchema', () => {
+  it('accepts a valid PersonaCreds object', () => {
+    const result = PersonaCredsSchema.safeParse(SAMPLE_CREDS);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts null webhookSecret', () => {
+    const result = PersonaCredsSchema.safeParse({
+      ...SAMPLE_CREDS,
+      webhookSecret: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a negative appId', () => {
+    const result = PersonaCredsSchema.safeParse({ ...SAMPLE_CREDS, appId: -1 });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ── Round-trip ────────────────────────────────────────────────────────────────
+
+describe('saveState + loadState — round-trip', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await makeTmpDir();
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('round-trips a minimal state (no coordinator, empty personas)', async () => {
+    await saveState(MINIMAL_STATE, { dir: tmpDir });
+    const loaded = await loadState(MINIMAL_STATE.prefix, { dir: tmpDir });
+    expect(loaded).toEqual(MINIMAL_STATE);
+  });
+
+  it('round-trips a full state (coordinator, partial personas, tunables)', async () => {
+    await saveState(FULL_STATE, { dir: tmpDir });
+    const loaded = await loadState(FULL_STATE.prefix, { dir: tmpDir });
+    expect(loaded).toEqual(FULL_STATE);
+  });
+
+  it('preserves numeric IDs (not coerced to strings)', async () => {
+    await saveState(FULL_STATE, { dir: tmpDir });
+    const loaded = await loadState(FULL_STATE.prefix, { dir: tmpDir });
+    expect(typeof loaded?.coordinator?.appId).toBe('number');
+    expect(typeof loaded?.coordinator?.installationId).toBe('number');
+  });
+
+  it('preserves null webhookSecret', async () => {
+    const state: WizardState = {
+      ...MINIMAL_STATE,
+      coordinator: { ...SAMPLE_CREDS, webhookSecret: null },
+    };
+    await saveState(state, { dir: tmpDir });
+    const loaded = await loadState(state.prefix, { dir: tmpDir });
+    expect(loaded?.coordinator?.webhookSecret).toBeNull();
+  });
+
+  it('overwrites an existing file', async () => {
+    await saveState(MINIMAL_STATE, { dir: tmpDir });
+
+    const updated: WizardState = {
+      ...MINIMAL_STATE,
+      coordinator: SAMPLE_CREDS,
+    };
+    await saveState(updated, { dir: tmpDir });
+
+    const loaded = await loadState(MINIMAL_STATE.prefix, { dir: tmpDir });
+    expect(loaded?.coordinator).toEqual(SAMPLE_CREDS);
+  });
+
+  it('creates the parent directory if it does not exist', async () => {
+    const nested = path.join(tmpDir, 'deep', 'nested', 'dir');
+    await saveState(MINIMAL_STATE, { dir: nested });
+    const loaded = await loadState(MINIMAL_STATE.prefix, { dir: nested });
+    expect(loaded?.prefix).toBe(MINIMAL_STATE.prefix);
+  });
+});
+
+// ── loadState — missing file ──────────────────────────────────────────────────
+
+describe('loadState — missing file', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await makeTmpDir();
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns null when the state file does not exist', async () => {
+    const result = await loadState('nonexistent-prefix', { dir: tmpDir });
+    expect(result).toBeNull();
+  });
+
+  it('returns null for a different prefix than the one saved', async () => {
+    await saveState(MINIMAL_STATE, { dir: tmpDir });
+    const result = await loadState('different-prefix', { dir: tmpDir });
+    expect(result).toBeNull();
+  });
+});
+
+// ── loadState — malformed file ────────────────────────────────────────────────
+
+describe('loadState — malformed file', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await makeTmpDir();
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('throws when the file contains invalid JSON', async () => {
+    const filePath = path.join(tmpDir, 'setup-bad.json');
+    await fs.writeFile(filePath, '{not valid json}', 'utf8');
+
+    await expect(loadState('bad', { dir: tmpDir })).rejects.toThrow(
+      filePath,
+    );
+  });
+
+  it('throws when the file JSON does not satisfy the schema', async () => {
+    const filePath = path.join(tmpDir, 'setup-invalid.json');
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({ version: 99, unexpected: true }),
+      'utf8',
+    );
+
+    await expect(loadState('invalid', { dir: tmpDir })).rejects.toThrow(
+      filePath,
+    );
+  });
+
+  it('does NOT silently overwrite a malformed file (throws instead)', async () => {
+    const filePath = path.join(tmpDir, 'setup-corrupt.json');
+    await fs.writeFile(filePath, 'totally-not-json', 'utf8');
+
+    let threw = false;
+    try {
+      await loadState('corrupt', { dir: tmpDir });
+    } catch {
+      threw = true;
+    }
+
+    // Ensure the original corrupt file is still there (not overwritten).
+    const stillThere = await fs.readFile(filePath, 'utf8');
+    expect(stillThere).toBe('totally-not-json');
+    expect(threw).toBe(true);
+  });
+});
+
+// ── saveState — file mode ─────────────────────────────────────────────────────
+
+describe('saveState — file mode 0o600', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await makeTmpDir();
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('sets mode 0o600 on the written file (skip on win32)', async () => {
+    if (process.platform === 'win32') return;
+
+    await saveState(MINIMAL_STATE, { dir: tmpDir });
+    const filePath = path.join(tmpDir, 'setup-my-prefix.json');
+    const stat = await fs.stat(filePath);
+    // Mask to the permission bits only (lower 9 bits).
+    expect(stat.mode & 0o777).toBe(0o600);
+  });
+});
+
+// ── clearState ────────────────────────────────────────────────────────────────
+
+describe('clearState', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await makeTmpDir();
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('removes the state file', async () => {
+    await saveState(MINIMAL_STATE, { dir: tmpDir });
+    await clearState(MINIMAL_STATE.prefix, { dir: tmpDir });
+
+    const result = await loadState(MINIMAL_STATE.prefix, { dir: tmpDir });
+    expect(result).toBeNull();
+  });
+
+  it('does not throw when the file does not exist', async () => {
+    await expect(
+      clearState('ghost-prefix', { dir: tmpDir }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('only removes the file for the specified prefix', async () => {
+    const stateA: WizardState = { ...MINIMAL_STATE, prefix: 'prefix-a' };
+    const stateB: WizardState = { ...MINIMAL_STATE, prefix: 'prefix-b' };
+    await saveState(stateA, { dir: tmpDir });
+    await saveState(stateB, { dir: tmpDir });
+
+    await clearState('prefix-a', { dir: tmpDir });
+
+    expect(await loadState('prefix-a', { dir: tmpDir })).toBeNull();
+    expect(await loadState('prefix-b', { dir: tmpDir })).toEqual(stateB);
+  });
+});
+
+// ── Concurrent save ───────────────────────────────────────────────────────────
+
+describe('concurrent saveState calls', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await makeTmpDir();
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('both writes complete without error when concurrent saves race', async () => {
+    const stateA: WizardState = { ...MINIMAL_STATE, prefix: 'race' };
+    const stateB: WizardState = {
+      ...MINIMAL_STATE,
+      prefix: 'race',
+      coordinator: SAMPLE_CREDS,
+    };
+
+    // Fire both saves simultaneously.
+    await expect(
+      Promise.all([
+        saveState(stateA, { dir: tmpDir }),
+        saveState(stateB, { dir: tmpDir }),
+      ]),
+    ).resolves.toBeDefined();
+
+    // The file must be readable and valid after both writes complete.
+    const final = await loadState('race', { dir: tmpDir });
+    expect(final).not.toBeNull();
+    expect(final?.prefix).toBe('race');
+  });
+});
