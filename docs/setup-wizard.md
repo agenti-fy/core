@@ -16,6 +16,7 @@ This replaces the manual click-through described in
 - [Run the wizard](#run-the-wizard)
 - [What it does, step by step](#what-it-does-step-by-step)
 - [Resuming an interrupted run](#resuming-an-interrupted-run)
+- [Session passphrase](#session-passphrase)
 - [Verifying](#verifying)
 - [Headless / scripted setups](#headless--scripted-setups)
 - [Troubleshooting](#troubleshooting)
@@ -157,7 +158,42 @@ agentify-setup resume --prefix myorg
 
 Already-created Apps are reused from the checkpoint; only missing personas
 are re-entered. The Anthropic secret is re-prompted because it is excluded
-from the checkpoint.
+from the checkpoint. A [session passphrase](#session-passphrase) is also
+required to decrypt the checkpoint.
+
+---
+
+## Session passphrase
+
+A passphrase-derived AES-256-GCM key encrypts secrets (PEM private keys,
+OAuth client secrets, webhook secrets) at rest in
+`~/.config/agentify/setup-<prefix>.json`.
+
+**When prompted:**
+
+| Subcommand | Prompts | Notes |
+|------------|---------|-------|
+| `init` | Twice (`Setup passphrase` + `Confirm passphrase`) | Typo guard |
+| `resume` | Once | Used to decrypt the checkpoint |
+| `verify` | Once | Acquired for UX symmetry; **not** used for decryption (ADR-001 §"verify subcommand interaction") |
+
+**Minimum length:** 12 characters — shorter and empty passphrases are
+rejected by the prompt helper.
+
+**Headless / CI:** set `AGENTIFY_SETUP_PASSPHRASE` to bypass the
+interactive prompt:
+
+```sh
+export AGENTIFY_SETUP_PASSPHRASE=my-long-ci-passphrase
+agentify-setup init --prefix myorg --repo acme/sandbox
+```
+
+**Loss recovery:** without the passphrase the state file cannot be
+decrypted. Delete `~/.config/agentify/setup-<prefix>.json` to start fresh,
+or invoke with a different `--prefix`.
+
+For the deep-dive on key derivation, AEAD framing, and v1→v2 migration see
+[`docs/adr/001-pem-at-rest-mitigation.md`](adr/001-pem-at-rest-mitigation.md).
 
 ---
 
