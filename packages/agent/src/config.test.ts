@@ -145,6 +145,9 @@ describe('loadConfig — kbWriteRetryMax validation', () => {
 });
 
 describe('loadConfig — kbEntryMaxBytes validation', () => {
+  /** Must stay in sync with KB_ENTRY_MAX_BYTES_CEILING in config.ts. */
+  const CEILING = 10 * 1024 * 1024; // 10 MiB
+
   it('rejects zero (must be positive)', () => {
     expect(() =>
       loadConfig({ ...BASE_ENV, KB_ENTRY_MAX_BYTES: '0' }),
@@ -154,6 +157,22 @@ describe('loadConfig — kbEntryMaxBytes validation', () => {
   it('accepts a positive value', () => {
     const cfg = loadConfig({ ...BASE_ENV, KB_ENTRY_MAX_BYTES: '512' });
     expect(cfg.kbEntryMaxBytes).toBe(512);
+  });
+
+  it('default is 1024 when KB_ENTRY_MAX_BYTES is unset', () => {
+    const cfg = loadConfig({ ...BASE_ENV });
+    expect(cfg.kbEntryMaxBytes).toBe(1024);
+  });
+
+  it('accepts a value equal to the ceiling (10 MiB)', () => {
+    const cfg = loadConfig({ ...BASE_ENV, KB_ENTRY_MAX_BYTES: CEILING.toString() });
+    expect(cfg.kbEntryMaxBytes).toBe(CEILING);
+  });
+
+  it('rejects a value one byte above the ceiling', () => {
+    expect(() =>
+      loadConfig({ ...BASE_ENV, KB_ENTRY_MAX_BYTES: (CEILING + 1).toString() }),
+    ).toThrow();
   });
 });
 

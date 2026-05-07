@@ -1,6 +1,25 @@
 import { z } from 'zod';
 import { boolFlag, type Method } from '@agentify/shared';
 
+/**
+ * Hard upper bound for a single KB entry written by `agentify-kb append`.
+ *
+ * Why this ceiling exists:
+ *   Without an upper bound, an operator typo (e.g. KB_ENTRY_MAX_BYTES=999999999)
+ *   would silently allow gigantic blobs to be committed to the wiki git tree on
+ *   every append, ballooning repo history without bound.  The schema-layer `.max()`
+ *   is the earliest enforcement point available today — WikiManager / `agentify-kb`
+ *   does not exist in tree yet; belt-and-braces call-site validation can land when
+ *   it does (TODO: add call-site guard in WikiManager once that package exists).
+ *
+ * Why 10 MiB:
+ *   10 MiB is comfortably above any realistic single prose entry while staying
+ *   well below filesystem-stress territory.  If a legitimate use-case requires
+ *   a larger cap, raise this constant and note the new value in the env-var
+ *   docs (docs/operations.md).
+ */
+const KB_ENTRY_MAX_BYTES_CEILING = 10 * 1024 * 1024; // 10 MiB
+
 const ConfigSchema = z.object({
   port: z.coerce.number().int().positive().default(8080),
   host: z.string().default('0.0.0.0'),
@@ -119,8 +138,20 @@ const ConfigSchema = z.object({
   /** Maximum number of git-push retries on non-fast-forward for `agentify-kb append`. */
   kbWriteRetryMax: z.coerce.number().int().min(1).default(3),
 
-  /** Maximum byte length of a single KB entry written by `agentify-kb append`. */
-  kbEntryMaxBytes: z.coerce.number().int().positive().default(1024),
+  /**
+   * Maximum byte length of a single KB entry written by `agentify-kb append`.
+   *
+   * The upper bound (`KB_ENTRY_MAX_BYTES_CEILING`, currently 10 MiB) is a
+   * schema-level sanity guard: without it an operator typo could allow arbitrarily
+   * large blobs to be committed to the wiki git tree on every append, ballooning
+   * repo history without bound.  To raise the ceiling legitimately, increase the
+   * `KB_ENTRY_MAX_BYTES_CEILING` constant and document the new value in
+   * docs/operations.md.
+   *
+   * TODO: add belt-and-braces call-site validation in WikiManager once that
+   * package exists — this schema guard is the only enforcement point today.
+   */
+  kbEntryMaxBytes: z.coerce.number().int().positive().max(KB_ENTRY_MAX_BYTES_CEILING).default(1024),
 
   /**
    * Force the Claude adapter selection. `auto` picks Live when EITHER
