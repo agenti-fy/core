@@ -250,6 +250,15 @@ Coordinator-polled. The coordinator polls `GET /status` until the agent transiti
 > **Authoritative source**: `packages/shared/src/rpc.ts` (`JobResultSchema`) — it carries field-level JSDoc. This block mirrors it for quick reference.
 
 ```ts
+/** One KB wiki write performed during a job. Stored inside `artifacts` so it
+ *  survives coordinator storage in the truncatable `artifacts` JSON column. */
+type KbWriteRecord = {
+  page:   string;                    // Wiki page name, e.g. "KB-Tinkerer" or "KB-Global"
+  scope:  'global' | 'persona';      // Shared global page or persona-scoped page
+  bytes:  number;                    // Byte length of the appended entry (non-negative integer)
+  sha?:   string;                    // Git commit SHA of the wiki push (populated on success)
+};
+
 type JobResult = {
   job_id: string;
   method: 'plan'|'implement'|'review'|'address_review'|'merge';
@@ -259,11 +268,11 @@ type JobResult = {
   session_id: string | null;
   duration_ms: number;
   artifacts: {
-    plan?:           { child_issues: number[] };
-    implement?:      { branch: string; pr_number: number };
-    review?:         { review_id: number; verdict: 'approved'|'changes_requested'|'commented' };
-    address_review?: { commits_pushed: number; rerequested: boolean };
-    merge?:          { merged: boolean; closed_issue?: number };
+    plan?:           { child_issues: number[]; kb_writes?: KbWriteRecord[] };
+    implement?:      { branch: string; pr_number: number; kb_writes?: KbWriteRecord[] };
+    review?:         { review_id: number; verdict: 'approved'|'changes_requested'|'commented'; kb_writes?: KbWriteRecord[] };
+    address_review?: { commits_pushed: number; rerequested: boolean; kb_writes?: KbWriteRecord[] };
+    merge?:          { merged: boolean; closed_issue?: number; kb_writes?: KbWriteRecord[] };
   };
   final_text?: string;
   error?: { message: string; stack?: string };

@@ -80,6 +80,7 @@ The coordinator–agent HTTP contract. Request and response bodies are validated
 | `RepoSchema` / `Repo` | `"<owner>/<repo>"` string with format validation |
 | `RegisterRequest` / `RegisterResponse` | Agent self-registration |
 | `DispatchRequest` / `DispatchAccepted` | Coordinator dispatching a job to an agent |
+| `KbWriteRecord` / `KbWriteRecordSchema` | One KB wiki write recorded inside `JobArtifacts`; tracks page name, scope, byte length, and optional commit SHA |
 | `JobResult` / `JobArtifacts` / `JobOutcome` | Agent's terminal job report |
 | `AgentStatusResponse` | Response to `GET /status` on the agent |
 | `HealthResponse` | Response to `GET /health` on both services |
