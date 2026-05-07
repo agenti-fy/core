@@ -50,14 +50,14 @@ const KB_PAGE_NAME_RE = /^KB-[A-Za-z0-9_-]{1,196}$/;
  * @param name  The resolved page name stem, e.g. `KB-Tinkerer` or `KB-Global`.
  *              Must NOT include the `.md` suffix.
  *
- * @throws Error with a message beginning `kb cli: refusing invalid page name`
+ * @throws Error with a message beginning `refusing invalid page name`
  */
 export function validateKbPageName(name: string): void {
   // 1. Fast-fail on NUL byte. NUL cannot be printed in error messages and is a
   //    classic shell/path injection vector independent of the allowlist below.
   if (name.includes('\0')) {
     throw new Error(
-      `kb cli: refusing invalid page name — contains NUL byte`,
+      `refusing invalid page name — contains NUL byte`,
     );
   }
 
@@ -66,7 +66,7 @@ export function validateKbPageName(name: string): void {
   //    produces a targeted diagnostic and guards against future regex relaxation.
   if (name.includes('..') || name.includes('/') || name.includes('\\')) {
     throw new Error(
-      `kb cli: refusing invalid page name "${name}" — contains path traversal or separator characters (.. / \\)`,
+      `refusing invalid page name "${name}" — contains path traversal or separator characters (.. / \\)`,
     );
   }
 
@@ -75,7 +75,7 @@ export function validateKbPageName(name: string): void {
   //    without per-call-site re-escaping.
   if (!KB_PAGE_NAME_RE.test(name)) {
     throw new Error(
-      `kb cli: refusing invalid page name "${name}" — must match /^KB-[A-Za-z0-9_-]{1,196}$/`,
+      `refusing invalid page name "${name}" — must match /^KB-[A-Za-z0-9_-]{1,196}$/`,
     );
   }
 
@@ -84,7 +84,7 @@ export function validateKbPageName(name: string): void {
   //    removed or relaxed without updating the length constraint.
   if (name.length > 199) {
     throw new Error(
-      `kb cli: refusing invalid page name "${name}" — stem exceeds 199 characters (filename with .md would exceed 202)`,
+      `refusing invalid page name "${name}" — stem exceeds 199 characters (filename with .md would exceed 202)`,
     );
   }
 }
