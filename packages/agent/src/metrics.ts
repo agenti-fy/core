@@ -1,6 +1,16 @@
 import { collectDefaultMetrics, Counter, Histogram, Registry } from 'prom-client';
 import type { JobOutcome, Method } from '@agentify/shared';
 
+/** Scope for KB read/write operations. */
+export type KbScope = 'global' | 'persona';
+
+/** Outcome of a KB write attempt. */
+export type KbWriteOutcome =
+  | 'success'
+  | 'conflict_retry_exhausted'
+  | 'format_rejected'
+  | 'wiki_disabled';
+
 /**
  * Agent metrics. Exposed at GET /metrics in Prometheus text format. Wired
  * from the SkillRunner so we don't need access to running adapter internals.
@@ -11,6 +21,9 @@ export class AgentMetrics {
   readonly jobDurationMs: Histogram<'method' | 'outcome'>;
   readonly tokensTotal: Counter<'kind'>;
   readonly costUsdTotal: Counter<'method'>;
+  readonly kbReadsTotal: Counter<'scope'>;
+  readonly kbWritesTotal: Counter<'scope' | 'outcome'>;
+  readonly kbWriteConflictsTotal: Counter;
 
   constructor(persona: string) {
     this.registry = new Registry();
@@ -48,6 +61,26 @@ export class AgentMetrics {
       labelNames: ['method'],
       registers: [this.registry],
     });
+
+    this.kbReadsTotal = new Counter({
+      name: 'agentify_kb_reads_total',
+      help: 'Total knowledge-base reads, by scope (global|persona).',
+      labelNames: ['scope'],
+      registers: [this.registry],
+    });
+
+    this.kbWritesTotal = new Counter({
+      name: 'agentify_kb_writes_total',
+      help: 'Total knowledge-base write attempts, by scope and outcome.',
+      labelNames: ['scope', 'outcome'],
+      registers: [this.registry],
+    });
+
+    this.kbWriteConflictsTotal = new Counter({
+      name: 'agentify_kb_write_conflicts_total',
+      help: 'Total individual KB write conflict retries (every retry, regardless of final outcome).',
+      registers: [this.registry],
+    });
   }
 
   recordJob(method: Method, outcome: JobOutcome, durationMs: number): void {
@@ -73,6 +106,18 @@ export class AgentMetrics {
   recordCost(method: Method, costUsd: number | undefined): void {
     if (typeof costUsd !== 'number' || costUsd <= 0) return;
     this.costUsdTotal.inc({ method }, costUsd);
+  }
+
+  recordKbRead(scope: KbScope): void {
+    this.kbReadsTotal.inc({ scope });
+  }
+
+  recordKbWrite(scope: KbScope, outcome: KbWriteOutcome): void {
+    this.kbWritesTotal.inc({ scope, outcome });
+  }
+
+  recordKbWriteConflict(): void {
+    this.kbWriteConflictsTotal.inc();
   }
 
   /**
