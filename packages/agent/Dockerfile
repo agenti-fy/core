@@ -44,6 +44,15 @@ RUN apk add --no-cache tini bash git github-cli
 
 COPY --from=builder /out /app
 
+# Install the agentify-kb shim.  Must run as root (writing to /usr/local/bin).
+# Placed late in the runtime stage so unrelated code changes don't bust the
+# layer.  The shim hard-codes the production path of the compiled CLI module
+# so it works regardless of the invoking directory.
+RUN cat >/usr/local/bin/agentify-kb <<'EOF' && chmod +x /usr/local/bin/agentify-kb
+#!/usr/bin/env bash
+exec node /app/dist/kb/cli.js "$@"
+EOF
+
 # Non-root user. Agent needs to write into /workspaces (worktrees) and
 # /app/.claude (Claude Code SDK conversation store — bind-mounted as a named
 # volume in compose so sessions survive container recreates; the directory
@@ -53,6 +62,11 @@ RUN addgroup -S agentify && adduser -S -G agentify -h /app agentify && \
     mkdir -p /workspaces /app/.claude && \
     chown -R agentify:agentify /app /workspaces
 USER agentify
+
+# Smoke-test: verify the shim resolves and exits 0 as the agentify non-root
+# user.  KB_CLONE_DIR is intentionally unset so every sub-command that needs
+# it falls back to "KB unavailable → exit 0", making --help the safest choice.
+RUN agentify-kb --help
 
 VOLUME ["/workspaces"]
 EXPOSE 8080
