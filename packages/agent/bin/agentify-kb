@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# agentify-kb — knowledge-base CLI shim.
+#
+# Resolves the compiled TypeScript output relative to this script so the shim
+# works both during local development (pnpm build) and inside the Docker image
+# (where the Dockerfile in #256 installs it at /usr/local/bin/agentify-kb).
+#
+# Production layout (Dockerfile): /app/dist/kb/cli.js
+# Development layout:             <repo>/packages/agent/dist/kb/cli.js
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLI_JS="${SCRIPT_DIR}/../dist/kb/cli.js"
+
+exec node "$CLI_JS" "$@"
