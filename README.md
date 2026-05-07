@@ -77,19 +77,37 @@ The fastest path is Docker Compose with three sample personas.
 ### Prerequisites
 
 - Docker + Docker Compose
-- A GitHub App installed on your sandbox repo (see [GitHub App setup](#github-app-setup))
-- An Anthropic API key
+- An Anthropic API key (or `CLAUDE_CODE_OAUTH_TOKEN` — the wizard prompts for either)
 
 ### Run
 
 ```sh
-# 1. Set required env (or put them in a .env file next to docker-compose.yml)
+# 1. Run the setup wizard — registers ten GitHub Apps, installs them on your repo,
+#    and writes a ready-to-use .env
+pnpm --filter @agentify/setup start init
+```
+
+<details>
+<summary>Set env manually (headless / air-gapped setups)</summary>
+
+See [GitHub App setup](#github-app-setup) for the full list of variables. Quick reference:
+
+```sh
+# Coordinator App (global)
 export GITHUB_APP_ID=...
 export GITHUB_APP_PRIVATE_KEY="$(cat path/to/key.pem)"   # multi-line PEM is fine
 export GITHUB_APP_INSTALLATION_ID=...
-export GITHUB_USER=your-bot-user
+export GITHUB_USER=your-coordinator-bot-user
 export ANTHROPIC_API_KEY=sk-ant-...
 
+# Per-persona Apps (repeat for each of the nine built-in personas)
+export ORCHESTRATOR_GITHUB_APP_ID=...
+# … (see docker-compose.yml for the full variable list)
+```
+
+</details>
+
+```sh
 # 2. Start coordinator + one agent per built-in persona
 #    (orchestrator, conductor, theorist, tinkerer, optimizer,
 #     glue, skeptic, crafter, scribe)
@@ -177,9 +195,11 @@ When a job fails for any reason that isn't operator-fixable (`task_error`, `sdk_
 
 ### GitHub App setup
 
-The system needs ONE GitHub App, installed on the repos you want it to manage. The same App credentials are used by the coordinator and every agent.
+The recommended path is the [`agentify-setup` wizard](docs/setup-wizard.md). The fields below document what the wizard collects and what to set if you prefer hand-rolling `.env`.
 
-Required permissions:
+The system needs ten GitHub Apps — one coordinator App (uses the global `GITHUB_APP_*` env keys) and one per-persona App (uses `<PERSONA>_GITHUB_APP_*` keys). Per-persona Apps ensure commits and comments are attributable to each persona's bot user.
+
+Required permissions (applied to all Apps):
 - **Contents**: Read & Write
 - **Issues**: Read & Write
 - **Pull requests**: Read & Write
