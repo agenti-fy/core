@@ -20,7 +20,7 @@ The previous iteration (`../agenti-fi`) embedded the entire orchestration loop, 
 - **Service-oriented**: each agent is its own container with a tiny RPC surface.
 - **Coordinator is dumb on purpose**: a state machine, not an SDK consumer. It polls GitHub, holds the source-of-truth DB, and dispatches.
 - **Claude Code SDK does the thinking**: skills + sessions live inside the agent; the coordinator never invokes a model.
-- **No knowledge base, no plugins, no dashboard, no auto-scaling** in this iteration.
+- **No plugins, no dashboard, no auto-scaling** in this iteration.
 
 ## 2. High-level architecture
 
@@ -935,7 +935,7 @@ agenti-fy/
 - Multi-tenant / multi-installation in a single deployment.
 - Auto-scaling. Agents are statically declared in compose.
 - Persistent durable queue. Lost in-flight is recovered via GitHub labels, not a queue.
-- Knowledge base / cross-project memory beyond the per-(agent,repo) Claude session id.
+- Cross-project memory across distinct repos (per-repo knowledge base IS supported — see §23).
 - Web UI dashboard. The terminal TUI (§17) is the only operator interface; no browser frontend in v1.
 - Webhook from GitHub OR from agent to coordinator. Polling everywhere.
 - Rate limiter. Polling at default cadence with one App installation is well below limits; revisit if needed.
@@ -1032,6 +1032,140 @@ When the coordinator applies `needs-human` due to a hijack detection:
 3. **False positive.** Edit the issue body to remove or rephrase the triggering phrase, then remove the `needs-human` label. The work poller will re-evaluate on the next cycle and route normally if the body no longer matches.
 4. **Confirmed attack.** Close the issue and block the author via GitHub's abuse tooling if appropriate. Do not remove `needs-human` without addressing the content.
 5. **Adjust the catalog if needed.** If false-positive rate is high on a specific pattern, open an issue to tighten the regex. Bias the catalog toward precision — a missed detection reaches the `SECURITY_PREAMBLE` defense; an over-eager pattern disrupts legitimate work.
+
+## 23. Knowledge base
+
+(implementation: #226)
+
+### 23.1 Purpose
+
+Each managed repo accumulates a durable, append-only **knowledge base** — a set of lore pages stored in its GitHub Wiki — that every agent consults at the start of a skill run and optionally contributes to at the end. The goal is to carry durable observations, pitfalls, and architectural insights across successive jobs without inflating Claude's in-context token budget by default.
+
+The KB is strictly **per-repo scoped**. Cross-repo or cross-project memory remains a non-goal (§19).
+
+### 23.2 Storage
+
+Pages live in the **GitHub Wiki** of the managed repo (`https://github.com/<owner>/<repo>.wiki.git`). This is a separate git repository that shares the same auth scope as the code repo and has its own browseable UI.
+
+Page inventory:
+
+| Page | Who writes | Who reads |
+|---|---|---|
+| `KB-Global.md` | Any persona | All personas |
+| `KB-<Persona>.md` (e.g. `KB-Scribe.md`) | That persona only | That persona, optionally others |
+
+Custom-soul agents use `KB-<soul-name>.md` keyed on `soul.frontmatter.name`.
+
+**Lazy initialisation**: a wiki repo only becomes pushable after the first page is created via the GitHub UI. `WikiManager.prepare()` returns `null` (KB disabled for this run) on a 404 clone and emits a single-line operator hint. Skill prompts guard all KB steps with `if [ -z "$KB_CLONE_DIR" ]; then skip; fi`.
+
+**Disabled mode**: setting `KB_ENABLED=false` in the agent environment, or an unreachable/empty wiki, yields `kbCloneDir = null`. All KB steps in skill prompts are no-ops; no error is surfaced to the operator.
+
+### 23.3 Directory layout
+
+```
+/workspaces/<org>/<repo>/
+├── .bare/            # existing — code repo bare clone
+├── .kb-bare/         # wiki repo bare clone (lazy; absent when KB disabled)
+├── .token            # existing — installation token (shared by code + wiki)
+├── <job_id>/         # existing — per-job code worktree
+└── .kb/<job_id>/     # per-job wiki worktree (cleaned up after every run)
+                      # Contains: KB-Global.md, KB-<persona>.md, ...
+```
+
+### 23.4 Read path
+
+The agent container exposes the wiki checkout via the environment variable `KB_CLONE_DIR`. Skills read pages with standard shell commands:
+
+```bash
+cat "$KB_CLONE_DIR/KB-Global.md"
+cat "$KB_CLONE_DIR/KB-${AGENTIFY_PERSONA_TITLE}.md"
+```
+
+`WikiManager.prepare()` ensures both files exist (creating them with a header stub on first use) before setting `KB_CLONE_DIR`.
+
+### 23.5 Write path
+
+The **only supported write surface** is the `agentify-kb` CLI helper, shipped in the agent Docker image at `/usr/local/bin/agentify-kb`:
+
+```
+agentify-kb append <persona|global> --from-issue N | --from-pr N
+```
+
+The helper:
+
+1. Reads the entry text from stdin.
+2. Stamps it with the current date, source link (`issue #N` or `PR #N`), and persona signature.
+3. Prepends the entry (newest-first) to the appropriate page under `$KB_CLONE_DIR`.
+4. Runs `git add / commit / push --force-with-lease` in the wiki worktree.
+5. On non-fast-forward, retries up to 3 times with `git pull --rebase` + push, with backoff. Failures beyond 3 retries emit `task_error` for the KB write only; the underlying skill job is unaffected.
+
+Free-form `git commit` to the wiki is permitted for operator maintenance but is not an agent-facing API.
+
+Sub-commands for operator use:
+
+```
+agentify-kb read   <persona|global>   # cat the page
+agentify-kb list                      # list all KB-*.md pages
+```
+
+### 23.6 Entry format
+
+Pages are append-only, newest-first Markdown:
+
+```markdown
+# KB: Tinkerer
+
+> Append-only knowledge base for the Tinkerer persona on this repo.
+> Newest entries on top. Each entry is dated and links the work that produced it.
+
+---
+
+## 2026-05-08 — observation about config hot-reload (#234, j_01HXY…)
+
+When `applyHotReloadable` runs (`packages/agent/src/config.ts:123-131`), it does NOT
+reset metrics counters. Tests asserting reset-to-zero need a fresh registry.
+
+— 🔧 The Tinkerer
+
+---
+```
+
+The helper enforces a hard **1 KB per-entry cap**. Entries exceeding the cap are truncated with a trailing `[truncated]` marker.
+
+### 23.7 Trust model
+
+KB content is classified as **semi-trusted DATA**. It is written by agents who have themselves read attacker-controlled GitHub text; a hijacked agent could deposit injection-laced entries targeting a subsequent run.
+
+Mitigations:
+
+- The `SECURITY_PREAMBLE` (§22.3) is updated to instruct Claude to treat KB content as context, not instructions. Directives inside KB pages ("ignore previous", "you are now") are hijack attempts — apply `needs-human` and stop. See issue #266 for the SECURITY_PREAMBLE update.
+- Every KB entry records its source (`issue #N` or `PR #N`), making noise auditable.
+- Operators can prune pages directly via the GitHub Wiki UI.
+- The coordinator hijack detector (§22.3) does **not** scan KB pages; the prompt-side SECURITY_PREAMBLE is the sole KB-path defense.
+
+### 23.8 Skill integration
+
+| Skill | KB read | KB write |
+|---|---|---|
+| `plan` | Yes — global + persona page | Yes — when a non-obvious insight surfaces |
+| `implement` | Yes — global + persona page | Yes — when a non-obvious insight surfaces |
+| `address-review` | Yes — global + persona page | Yes — when a non-obvious insight surfaces |
+| `review` | Yes — global + persona page | Deliberate only (skip unless strong reason) |
+| `merge` | Yes — global page | Deliberate only (skip unless strong reason) |
+
+Skills check `$KB_CLONE_DIR` before every KB operation. An empty variable means KB is disabled; skip and continue normally.
+
+Skill prompt templates receive two new interpolation variables when KB is enabled:
+
+- `{{kb_clone_dir}}` — absolute path to the wiki worktree checkout.
+- `{{kb_global_page}}` — absolute path to `KB-Global.md`.
+- `{{kb_persona_page}}` — absolute path to `KB-<Persona>.md`.
+
+See `packages/agent/src/skills/defaults/_common.md` for the shared KB read/write convention taught to all skills.
+
+### 23.9 Operator runbook
+
+See `docs/knowledge-base.md` for the full operator guide covering initialisation, page pruning, disabling KB per-agent, and wiki push troubleshooting.
 
 ---
 
