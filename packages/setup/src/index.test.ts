@@ -185,6 +185,23 @@ describe('run — init', () => {
     const afterApps = savedStates[1];
     expect(afterApps?.tunables?.LOG_LEVEL).toBe('debug');
   });
+
+  it('does not persist anthropic secret to disk (v1 policy)', async () => {
+    const savedStates: WizardState[] = [];
+    const deps = makeDeps({
+      runAnthropic: vi.fn(async () => ({
+        anthropic: { kind: 'api_key' as const, value: 'sk-ant-supersecret' },
+      })),
+      saveState: vi.fn(async (state: WizardState) => { savedStates.push(state); }),
+    });
+
+    await run(args('init'), deps);
+
+    // anthropic must be absent from every save (long-lived secret, v1 policy)
+    for (const s of savedStates) {
+      expect(s.anthropic).toBeUndefined();
+    }
+  });
 });
 
 // ── resume subcommand ─────────────────────────────────────────────────────────

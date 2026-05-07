@@ -92,7 +92,7 @@ function validateWorkPollS(s: string): string | null {
  * Must parse as a positive finite number.
  */
 function validateCostLimit(s: string): string | null {
-  const n = parseFloat(s);
+  const n = Number(s);
   if (Number.isNaN(n) || n <= 0) {
     return 'CLAUDE_COST_LIMIT_USD must be a positive number.';
   }
@@ -146,10 +146,11 @@ async function askSecretWithValidation(
  *  5. **CLAUDE_COST_LIMIT_USD** (`ask`): positive float, default 5.0.
  *
  * Returns a `Partial<WizardState>` containing `anthropic` and `tunables`.
- * Note: the caller (index.ts run()) merges and saves state after this phase;
- * the secret will be in the in-memory state so the finalize phase can render
- * it to .env.  Operators who wish to omit the secret from the on-disk state
- * file should delete the state file after the wizard completes.
+ * Note: the caller (index.ts run()) holds the returned `anthropic` value in
+ * memory so the finalize phase can render it to `.env`, but strips it before
+ * every `saveFn` call — the secret is never written to disk (v1 policy from
+ * #426/#430).  On `resume`, `state.anthropic` will be absent and the wizard
+ * re-prompts for the secret, which is the correct behaviour per the spec.
  *
  * @throws {PromptCancelled} When the user presses Ctrl-C or sends EOF.
  */

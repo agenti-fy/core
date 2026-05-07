@@ -73,7 +73,7 @@ export { runApps };
 export { runAnthropic };
 
 /**
- * **Stub — implemented by #430 (`driver/finalize.ts`).**
+ * **Stub — implemented by #431 (`driver/finalize.ts`).**
  *
  * Renders the collected state to a `.env` file (or stdout when `--dry-run`)
  * and, in verify mode, checks that all Apps are still reachable and
@@ -158,6 +158,18 @@ function stateFilePath(prefix: string, dir?: string): string {
   return path.join(resolved, `setup-${prefix}.json`);
 }
 
+/**
+ * Strip long-lived secrets before writing state to disk (v1 policy: #426/#430).
+ *
+ * `anthropic.value` is held in memory so the finalize phase can render it to
+ * `.env`, but it must never be written to the checkpoint file.  On `resume`,
+ * if `state.anthropic` is absent the wizard re-prompts — that is the correct
+ * behaviour per the spec.
+ */
+function stateForSave(state: WizardState): WizardState {
+  return { ...state, anthropic: undefined };
+}
+
 // ── run ───────────────────────────────────────────────────────────────────────
 
 /**
@@ -236,30 +248,30 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
         ownerType: preambleResult.ownerType,
       });
     }
-    await saveFn(state, stateOpts);
+    await saveFn(stateForSave(state), stateOpts);
 
     // verify subcommand skips Apps and Anthropic phases.
     if (args.subcommand === 'verify') {
       const finalizeResult = await finalizeFn({ state, io });
       state = mergeState(state, finalizeResult);
-      await saveFn(state, stateOpts);
+      await saveFn(stateForSave(state), stateOpts);
       return 0;
     }
 
     // Phase 2: Apps.
     const appsResult = await appsFn({ state, io });
     state = mergeState(state, appsResult);
-    await saveFn(state, stateOpts);
+    await saveFn(stateForSave(state), stateOpts);
 
     // Phase 3: Anthropic.
     const anthropicResult = await anthropicFn({ state, io });
     state = mergeState(state, anthropicResult);
-    await saveFn(state, stateOpts);
+    await saveFn(stateForSave(state), stateOpts);
 
     // Phase 4: Finalize.
     const finalizeResult = await finalizeFn({ state, io });
     state = mergeState(state, finalizeResult);
-    await saveFn(state, stateOpts);
+    await saveFn(stateForSave(state), stateOpts);
 
     return 0;
   } catch (err) {

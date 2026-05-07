@@ -301,6 +301,15 @@ describe('runAnthropic — CLAUDE_COST_LIMIT_USD validation', () => {
 
     expect(result.tunables?.['CLAUDE_COST_LIMIT_USD']).toBe(100);
   });
+
+  it('re-prompts when value has trailing junk (e.g. "5abc")', async () => {
+    // Number('5abc') is NaN; parseFloat('5abc') was 5 — validates the tighter check.
+    const io = makeIo(['1', 'sk-ant-key', '1', '30', '5abc', '5.0']);
+    const result = await runAnthropic({ state: makeState(), io });
+
+    expect(result.tunables?.['CLAUDE_COST_LIMIT_USD']).toBe(5.0);
+    expect(io.output()).toContain('positive number');
+  });
 });
 
 // ── PromptCancelled on EOF ────────────────────────────────────────────────────
