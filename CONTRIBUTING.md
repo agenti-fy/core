@@ -28,9 +28,10 @@ packages/
   e2e/           Doctor + happy-path E2E harness
 ```
 
-`shared` is a build-time dependency of every other package. If you change something in `shared`,
-either rebuild it first (`pnpm --filter @agentify/shared build`) or rely on the vitest alias
-described in [Iterating](#iterating) to pick up changes during tests.
+`shared` is a build-time dependency of every other package. `pnpm typecheck` and `pnpm test`
+pick up `shared` changes without a prior build — project-references mode and the vitest alias
+handle this respectively (see [Iterating](#iterating)). Only `pnpm start` requires a prior
+rebuild: `pnpm --filter @agentify/shared build`.
 
 ---
 
@@ -45,7 +46,9 @@ pnpm typecheck     # type-check (project-references build mode)
 pnpm test          # vitest run — no network or live services required
 ```
 
-All four commands should exit 0. If `pnpm build` fails, check that your Node version is ≥ 22.
+All four commands should exit 0. `pnpm typecheck` and `pnpm test` succeed on a fresh clone
+without a prior `pnpm build` — only `pnpm start` requires built output. If `pnpm build` fails,
+check that your Node version is ≥ 22.
 
 To wipe compiled output and caches and start fresh:
 
