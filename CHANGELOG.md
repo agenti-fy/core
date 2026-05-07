@@ -35,6 +35,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Treat empty-string env vars for the remaining numeric fields in agent config (`packages/agent/src/config.ts`) — `AGENT_PORT`/`PORT`, `REGISTER_RETRY_MS`, `REGISTER_MAX_ATTEMPTS`, `HEARTBEAT_INTERVAL_MS`, `COORDINATOR_TIMEOUT_MS`, `JOB_HISTORY_CAPACITY`, `CLAUDE_MAX_TURNS`, `CLAUDE_MAX_TURNS_{PLAN,IMPLEMENT,REVIEW,ADDRESS_REVIEW,MERGE}`, `CLAUDE_COST_LIMIT_USD` — as unset rather than coercing to `0` (which previously crashed the agent at startup on `.positive()`/`.min(1)` schema constraints). Affects compose `${VAR-}` expansions where the variable is not set. Adds regression coverage in `packages/agent/src/config.test.ts`. (#313, closes #280.)
 - Sync SPEC.md §6.4 `JobResult` type with `JobResultSchema` in `packages/shared/src/rpc.ts`: add `final_text?`, `usage_input?`, `usage_output?`, `usage_cache_read?`, `usage_cache_write?`, `cost_usd?`; add `'orphaned'` to the `outcome` union; change `session_id` to `string | null`. Closes #144 (refs #142, #66).
 
+### Security
+
+- Hardened `parseRepo` with a charset allowlist (`^[A-Za-z0-9_.-]+$` per segment), closing a shell-quoting break in `credentialHelperCommand` and every other call-site that interpolates owner/repo into shell strings (#342). Inputs containing shell metacharacters, spaces, or other disallowed bytes now throw `invalid repo "…" — contains disallowed characters` so operators can grep the error suffix in logs.
+
 ## [0.1.0] - 2026-05-05
 
 Initial release of the agenti-fy multi-agent development system.
