@@ -155,6 +155,18 @@ the description explains the why.
 
 ---
 
+## Architectural decisions
+
+Significant design choices — anything that locks in a contract or introduces a hard-to-reverse
+change — are recorded as ADRs in `docs/adr/NNN-<slug>.md`. See
+[docs/adr/001-pem-at-rest-mitigation.md](docs/adr/001-pem-at-rest-mitigation.md) for an example
+of the expected header and body format.
+
+If your PR makes a structural or hard-to-reverse decision (new protocol, data schema, security
+boundary, public API surface), add an ADR alongside the code change.
+
+---
+
 ## Adding a persona
 
 See the [Adding a new persona](README.md#adding-a-new-persona) section in the root README. Drop a
