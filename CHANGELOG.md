@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `POST /reset` now hot-reloads `CLAUDE_MAX_TURNS_*` per-method turn caps (#93) and `CLAUDE_TIMEOUT_MS` (#103) without a process restart; static-at-boot settings (host, port, coordinator URL, agent public URL, heartbeat interval, credentials) still require a restart.
 - Skill-body template tokens `{{repo}}`, `{{target_id}}`, `{{agent_name}}`, and `{{persona}}` are no longer interpolated into the skill template. Their values now appear in a trailing **Task vars** block appended to `skillPrompt`; only `{{signature}}` is still substituted directly into the template. This makes the stable prefix byte-identical across jobs, enabling prompt-cache hits.
 - **Prompt caching**: `systemPrompt` is now sent as a `string[]` with `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` separating the cacheable stable prefix (persona body + skill template) from the volatile task-vars trailer. Replaces the prior `{ type: 'preset', preset: 'claude_code', append: personaBody }` form; `cache_read` tokens become non-zero on warm runs. Closes #64.
+- **setup**: removed unused `ownerType` and `orgLogin` fields from the `BuildManifestArgs` interface in `packages/setup/src/manifest.ts` (and the matching `ownerType: 'user'` placeholders from `manifest.test.ts` call sites). The fields had no effect on `buildManifest` output and no external caller passed them; `ManifestStartUrlArgs` is unchanged because its `ownerType`/`orgLogin` actively drive the manifest start URL. (#461, closes #452.)
 
 ### Fixed
 
