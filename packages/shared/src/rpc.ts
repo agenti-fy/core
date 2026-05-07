@@ -114,6 +114,12 @@ export type AgentStatusResponse = z.infer<typeof AgentStatusResponseSchema>;
  * Written by `agentify-kb append` (Phase 2); parsed from `extractArtifacts`
  * in the agent's live adapter. Fields are intentionally minimal so they
  * survive coordinator storage in the `artifacts` JSON column.
+ *
+ * Validation notes:
+ * - `sha` regex `/^[0-9a-f]{7,64}$/` matches 7-char short SHAs through 40-char
+ *   Git SHA-1 and is forward-compatible with 64-char SHA-256.
+ * - `page` is intentionally NOT regex-tightened here; enforcement lives at the
+ *   `agentify-kb` CLI boundary (see #276).
  */
 export const KbWriteRecordSchema = z.object({
   /** Wiki page name, e.g. "KB-Tinkerer" or "KB-Global". */
@@ -122,8 +128,14 @@ export const KbWriteRecordSchema = z.object({
   scope: z.enum(['global', 'persona']),
   /** Byte length of the appended entry (non-negative integer). */
   bytes: z.number().int().nonnegative(),
-  /** Git commit SHA of the wiki push, populated when the push succeeded. */
-  sha: z.string().min(1).optional(),
+  /**
+   * Git commit SHA of the wiki push, populated when the push succeeded.
+   * Regex matches 7-char short SHAs, 40-char Git SHA-1, and 64-char SHA-256.
+   */
+  sha: z
+    .string()
+    .regex(/^[0-9a-f]{7,64}$/, 'must be a 7-64 char lowercase hex Git SHA')
+    .optional(),
 });
 export type KbWriteRecord = z.infer<typeof KbWriteRecordSchema>;
 
@@ -145,35 +157,35 @@ export const JobArtifactsSchema = z
     plan: z
       .object({
         child_issues: z.array(z.number().int().positive()),
-        kb_writes: z.array(KbWriteRecordSchema).optional(),
+        kb_writes: z.array(KbWriteRecordSchema).max(64, 'kb_writes capped at 64 entries per job').optional(),
       })
       .optional(),
     implement: z
       .object({
         branch: z.string().min(1),
         pr_number: z.number().int().positive(),
-        kb_writes: z.array(KbWriteRecordSchema).optional(),
+        kb_writes: z.array(KbWriteRecordSchema).max(64, 'kb_writes capped at 64 entries per job').optional(),
       })
       .optional(),
     review: z
       .object({
         review_id: z.number().int(),
         verdict: z.enum(['approved', 'changes_requested', 'commented']),
-        kb_writes: z.array(KbWriteRecordSchema).optional(),
+        kb_writes: z.array(KbWriteRecordSchema).max(64, 'kb_writes capped at 64 entries per job').optional(),
       })
       .optional(),
     address_review: z
       .object({
         commits_pushed: z.number().int().nonnegative(),
         rerequested: z.boolean(),
-        kb_writes: z.array(KbWriteRecordSchema).optional(),
+        kb_writes: z.array(KbWriteRecordSchema).max(64, 'kb_writes capped at 64 entries per job').optional(),
       })
       .optional(),
     merge: z
       .object({
         merged: z.boolean(),
         closed_issue: z.number().int().positive().optional(),
-        kb_writes: z.array(KbWriteRecordSchema).optional(),
+        kb_writes: z.array(KbWriteRecordSchema).max(64, 'kb_writes capped at 64 entries per job').optional(),
       })
       .optional(),
   })

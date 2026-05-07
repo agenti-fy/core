@@ -256,7 +256,7 @@ type KbWriteRecord = {
   page:   string;                    // Wiki page name, e.g. "KB-Tinkerer" or "KB-Global"
   scope:  'global' | 'persona';      // Shared global page or persona-scoped page
   bytes:  number;                    // Byte length of the appended entry (non-negative integer)
-  sha?:   string;                    // Git commit SHA of the wiki push (populated on success)
+  sha?:   string;                    // Git commit SHA; regex /^[0-9a-f]{7,64}$/ (7-char short SHA through 64-char SHA-256)
 };
 
 type JobResult = {
@@ -268,6 +268,7 @@ type JobResult = {
   session_id: string | null;
   duration_ms: number;
   artifacts: {
+    // kb_writes is capped at 64 entries per job across all five slots (schema-enforced)
     plan?:           { child_issues: number[]; kb_writes?: KbWriteRecord[] };
     implement?:      { branch: string; pr_number: number; kb_writes?: KbWriteRecord[] };
     review?:         { review_id: number; verdict: 'approved'|'changes_requested'|'commented'; kb_writes?: KbWriteRecord[] };
