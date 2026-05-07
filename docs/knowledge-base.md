@@ -160,9 +160,14 @@ container env and restart if needed.
 **Symptom:** Agent log shows a push rejection from the wiki remote during
 `agentify-kb append`.
 
-**Cause:** Two agents wrote to the same wiki page concurrently (non-fast-
-forward). The `agentify-kb` CLI retries automatically — it fetches, rebases
-the new entry onto the current tip, and re-pushes (max 3 attempts).
+**Cause:** Two agents wrote to the same wiki page concurrently (non-fast-forward
+push). The `agentify-kb` CLI retries automatically: it attempts
+`git push --force-with-lease`; on rejection it pauses with exponential backoff,
+runs `git pull --rebase` to incorporate the latest remote tip, then re-pushes —
+up to `KB_WRITE_RETRY_MAX` attempts (default 3) in total.
+
+**If retries are exhausted:** The KB write fails with `task_error` for the KB
+write only; the underlying skill job continues unaffected.
 
 **If the failure persists after retries:** The installation token may lack
 wiki write permission. Check the GitHub App permission settings (see step 1
