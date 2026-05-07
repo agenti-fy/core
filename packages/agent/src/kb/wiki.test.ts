@@ -477,6 +477,224 @@ describe('prepare — kbEnabled=false', () => {
   });
 });
 
+// ── prepare — success path (first run) ───────────────────────────────────────
+
+describe('prepare — success (first run: bare does not yet exist)', () => {
+  let workspacesDir: string;
+
+  beforeEach(async () => {
+    workspacesDir = await mkdtemp(join(tmpdir(), 'wiki-prepare-fresh-'));
+    vi.clearAllMocks();
+    // Create the bare dir and worktree dir when the corresponding git commands
+    // fire so subsequent `pathExists` checks see a real directory.
+    mockRunGit.mockImplementation(async (args: string[]) => {
+      if (Array.isArray(args)) {
+        if (args.includes('clone') && args.includes('--bare')) {
+          // args: ['-c', 'credential.helper=…', 'clone', '--bare', url, bareDir]
+          const bareDir = args[args.length - 1];
+          if (bareDir && !bareDir.startsWith('-')) {
+            await mkdir(bareDir, { recursive: true });
+          }
+        }
+        if (args.includes('worktree') && args.includes('add')) {
+          const addIdx = args.indexOf('add');
+          const worktreePath = addIdx + 1 < args.length ? args[addIdx + 1] : undefined;
+          if (worktreePath) await mkdir(worktreePath, { recursive: true });
+        }
+      }
+      return { stdout: '', stderr: '' };
+    });
+  });
+
+  afterEach(async () => {
+    await rm(workspacesDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  it('invokes git clone --bare, skips fetch, adds worktree, sets identity', async () => {
+    const mgr = makeMgr(workspacesDir);
+    const result = await mgr.prepare('owner/repo', 'job1');
+
+    // Must return a non-null cloneDir
+    expect(result.cloneDir).not.toBeNull();
+    expect(result.tokenFile).not.toBeNull();
+
+    const calls = mockRunGit.mock.calls.map((c) => c[0] as string[]);
+
+    // git clone --bare must have been invoked with the wiki URL
+    const cloneCall = calls.find((a) => a.includes('clone') && a.includes('--bare'));
+    expect(cloneCall).toBeDefined();
+    expect(cloneCall!.join(' ')).toContain('owner/repo.wiki.git');
+
+    // git worktree add must have been invoked
+    const wtAdd = calls.find((a) => a.includes('worktree') && a.includes('add'));
+    expect(wtAdd).toBeDefined();
+
+    // git identity must be configured on the worktree
+    const nameCall = calls.find((a) => a.includes('user.name'));
+    expect(nameCall).toBeDefined();
+    const emailCall = calls.find((a) => a.includes('user.email'));
+    expect(emailCall).toBeDefined();
+
+    // fetch must NOT have been called on the first run (clone sets the TTL)
+    const fetchCall = calls.find((a) => a.includes('fetch'));
+    expect(fetchCall).toBeUndefined();
+  });
+
+  it('cloneDir path includes job_id and .kb segment', async () => {
+    const mgr = makeMgr(workspacesDir);
+    const result = await mgr.prepare('owner/repo', 'job1');
+
+    expect(result.cloneDir).toContain('.kb');
+    expect(result.cloneDir).toContain('job1');
+  });
+
+  it('tokenFile path points to the shared .token file in the repo dir', async () => {
+    const mgr = makeMgr(workspacesDir);
+    const result = await mgr.prepare('owner/repo', 'job1');
+
+    expect(result.tokenFile).toContain('.token');
+    expect(result.tokenFile).not.toContain('.kb');
+  });
+});
+
+// ── prepare — fetch debounce (cached path) ────────────────────────────────────
+
+describe('prepare — fetch debounce (bare already cloned, within TTL)', () => {
+  let workspacesDir: string;
+
+  /**
+   * Helper that configures mockRunGit to create real directories on `clone --bare`
+   * and `worktree add` so pathExists() behaves correctly across two prepare() calls.
+   */
+  function setupSuccessMock(): void {
+    mockRunGit.mockImplementation(async (args: string[]) => {
+      if (Array.isArray(args)) {
+        if (args.includes('clone') && args.includes('--bare')) {
+          const bareDir = args[args.length - 1];
+          if (bareDir && !bareDir.startsWith('-')) {
+            await mkdir(bareDir, { recursive: true });
+          }
+        }
+        if (args.includes('worktree') && args.includes('add')) {
+          const addIdx = args.indexOf('add');
+          const worktreePath = addIdx + 1 < args.length ? args[addIdx + 1] : undefined;
+          if (worktreePath) await mkdir(worktreePath, { recursive: true });
+        }
+      }
+      return { stdout: '', stderr: '' };
+    });
+  }
+
+  beforeEach(async () => {
+    workspacesDir = await mkdtemp(join(tmpdir(), 'wiki-prepare-cached-'));
+    vi.clearAllMocks();
+    setupSuccessMock();
+  });
+
+  afterEach(async () => {
+    await rm(workspacesDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  it('skips git fetch on the second prepare() called immediately after the first', async () => {
+    const mgr = makeMgr(workspacesDir);
+
+    // First prepare: triggers clone + sets lastFetchAt
+    await mgr.prepare('owner/repo', 'job1');
+
+    // Second prepare immediately: bare exists and lastFetchAt is within TTL
+    mockRunGit.mockClear();
+    setupSuccessMock();
+    await mgr.prepare('owner/repo', 'job2');
+
+    // Fetch must not appear in the second call's git invocations
+    const calls = mockRunGit.mock.calls.map((c) => c[0] as string[]);
+    const fetchCall = calls.find((a) => a.includes('fetch'));
+    expect(fetchCall).toBeUndefined();
+
+    // Clone must not have been called again (bare already exists)
+    const cloneCall = calls.find((a) => a.includes('clone'));
+    expect(cloneCall).toBeUndefined();
+  });
+});
+
+// ── cleanup — worktree removal and fallback ───────────────────────────────────
+
+describe('cleanup — worktree removal', () => {
+  let workspacesDir: string;
+
+  beforeEach(async () => {
+    workspacesDir = await mkdtemp(join(tmpdir(), 'wiki-cleanup-test-'));
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await rm(workspacesDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  it('invokes git worktree remove --force on the happy path', async () => {
+    mockRunGit.mockResolvedValue({ stdout: '', stderr: '' });
+
+    const mgr = makeMgr(workspacesDir);
+    await mgr.cleanup('owner/repo', 'job1');
+
+    const calls = mockRunGit.mock.calls.map((c) => c[0] as string[]);
+    const removeCall = calls.find(
+      (a) => a.includes('worktree') && a.includes('remove') && a.includes('--force'),
+    );
+    expect(removeCall).toBeDefined();
+
+    // The worktree path argument must point to the job-specific directory
+    const wtPath = removeCall!.find((seg) => seg.includes('job1'));
+    expect(wtPath).toBeDefined();
+  });
+
+  it('falls back to rm -rf + worktree prune when git worktree remove fails', async () => {
+    // First call (worktree remove): fails
+    // Second call (worktree prune): succeeds
+    mockRunGit
+      .mockRejectedValueOnce(new Error('not a worktree'))
+      .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+    // Create the job worktree dir so we can assert it gets removed
+    const worktreePath = join(workspacesDir, 'owner', 'repo', '.kb', 'job1');
+    await mkdir(worktreePath, { recursive: true });
+    // Write a sentinel file so we can confirm the directory was removed
+    await writeFile(join(worktreePath, 'sentinel.txt'), 'data', 'utf8');
+
+    const mgr = makeMgr(workspacesDir);
+    await mgr.cleanup('owner/repo', 'job1');
+
+    // Worktree directory must have been physically removed
+    let dirExists = false;
+    try {
+      await stat(worktreePath);
+      dirExists = true;
+    } catch {
+      // expected
+    }
+    expect(dirExists).toBe(false);
+
+    // git worktree prune must have been called as a second git invocation
+    const calls = mockRunGit.mock.calls.map((c) => c[0] as string[]);
+    const pruneCall = calls.find((a) => a.includes('worktree') && a.includes('prune'));
+    expect(pruneCall).toBeDefined();
+  });
+
+  it('cleanup is best-effort: a complete failure does not throw', async () => {
+    // Both the worktree remove AND the prune fail — cleanup must not propagate
+    mockRunGit
+      .mockRejectedValueOnce(new Error('worktree remove failed'))
+      .mockRejectedValueOnce(new Error('prune also failed'));
+
+    const mgr = makeMgr(workspacesDir);
+    // Must resolve without throwing
+    await expect(mgr.cleanup('owner/repo', 'job1')).resolves.toBeUndefined();
+  });
+});
+
 // ── Token-file helpers ─────────────────────────────────────────────────────────
 
 /**
