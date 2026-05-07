@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import type { JobRecord } from '@agentify/shared';
+import type { JobRecord, JobResult } from '@agentify/shared';
 import type { CoordinatorStore } from '../store.js';
 import type { AgentRpcClient, GetJobResult } from '../agent-client.js';
 import type { CoordinatorMetrics } from '../metrics.js';
@@ -113,6 +113,11 @@ async function reconcileJob(
   const serialized = JSON.stringify(result);
   // .length returns UTF-16 code units (not UTF-8 bytes); see maxResultJsonBytes JSDoc.
   const serializedBytes = serialized.length;
+
+  // Defensive: do not mutate the input result in-place. Build a shallow clone on
+  // the breach path so callers that retain a reference observe no side-effects.
+  let persisted: JobResult = result;
+
   if (serializedBytes > deps.config.maxResultJsonBytes) {
     deps.logger.warn(
       {
@@ -124,41 +129,44 @@ async function reconcileJob(
       'result_json exceeds MAX_RESULT_JSON_BYTES — artifacts dropped, outcome overridden to task_error',
     );
     const capMsg = `result_json exceeded MAX_RESULT_JSON_BYTES (${serializedBytes} > ${deps.config.maxResultJsonBytes}); artifacts dropped`;
-    result.artifacts = {};
-    result.outcome = 'task_error';
-    result.error = result.error
-      ? { ...result.error, message: `${result.error.message}; ${capMsg}` }
-      : { message: capMsg };
-    deps.metrics?.recordJobCompletion(result.method, 'task_error');
+    persisted = {
+      ...result,
+      artifacts: {},
+      outcome: 'task_error',
+      error: result.error
+        ? { ...result.error, message: `${result.error.message}; ${capMsg}` }
+        : { message: capMsg },
+    };
+    deps.metrics?.recordJobCompletion(persisted.method, 'task_error');
   } else {
     deps.metrics?.recordJobCompletion(result.method, result.outcome);
   }
 
-  const finalStatus = result.outcome === 'success' ? 'complete' : 'failed';
+  const finalStatus = persisted.outcome === 'success' ? 'complete' : 'failed';
   deps.store.updateJobStatus(job.job_id, finalStatus, {
     completed_at: Date.now(),
-    outcome: result.outcome,
-    result_json: JSON.stringify(result),
+    outcome: persisted.outcome,
+    result_json: JSON.stringify(persisted),
   });
   deps.logger.info(
     {
       agent_id: agent.agent_id,
       job_id: job.job_id,
-      method: result.method,
-      repo: result.repo,
-      outcome: result.outcome,
-      duration_ms: result.duration_ms,
+      method: persisted.method,
+      repo: persisted.repo,
+      outcome: persisted.outcome,
+      duration_ms: persisted.duration_ms,
     },
     'job completed',
   );
 
   // Persist session id only when the run produced something meaningful.
-  if (result.session_id && (result.outcome === 'success' || result.outcome === 'task_error')) {
+  if (persisted.session_id && (persisted.outcome === 'success' || persisted.outcome === 'task_error')) {
     try {
-      deps.store.upsertSession(agent.agent_id, result.repo, result.session_id);
+      deps.store.upsertSession(agent.agent_id, persisted.repo, persisted.session_id);
     } catch (err) {
       deps.logger.warn(
-        { agent_id: agent.agent_id, repo: result.repo, err: String(err) },
+        { agent_id: agent.agent_id, repo: persisted.repo, err: String(err) },
         'failed to persist session_id',
       );
     }
@@ -166,20 +174,20 @@ async function reconcileJob(
 
   // Record plan→children mapping so the auto-close loop can track completion.
   if (
-    result.method === 'plan' &&
-    result.outcome === 'success' &&
-    (result.artifacts.plan?.child_issues?.length ?? 0) > 0
+    persisted.method === 'plan' &&
+    persisted.outcome === 'success' &&
+    (persisted.artifacts.plan?.child_issues?.length ?? 0) > 0
   ) {
     try {
-      const child_issues = result.artifacts.plan!.child_issues;
-      deps.store.upsertPlan(result.repo, result.target_id, child_issues);
+      const child_issues = persisted.artifacts.plan!.child_issues;
+      deps.store.upsertPlan(persisted.repo, persisted.target_id, child_issues);
       deps.logger.info(
-        { repo: result.repo, parent_id: result.target_id, child_count: child_issues.length },
+        { repo: persisted.repo, parent_id: persisted.target_id, child_count: child_issues.length },
         'plan recorded for auto-close tracking',
       );
     } catch (err) {
       deps.logger.warn(
-        { repo: result.repo, parent_id: result.target_id, err: String(err) },
+        { repo: persisted.repo, parent_id: persisted.target_id, err: String(err) },
         'failed to record plan — auto-close will retry on next plan run',
       );
     }

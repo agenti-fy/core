@@ -393,5 +393,21 @@ describe('pollJobCompletions', () => {
       ).toEqual([1, 2]);
       s.close();
     });
+
+    it('input result reference is not mutated when cap is exceeded', async () => {
+      const s = freshStore();
+      const c = new FakeAgentClient();
+      const tinyCapConfig = { maxResultJsonBytes: 10 };
+      const bigResult = jobResult({ final_text: 'x'.repeat(200) });
+      // Deep-equal snapshot taken before the call — cheap and unambiguous.
+      const snapshot = JSON.parse(JSON.stringify(bigResult));
+      setupCompletedAgent(s, c, bigResult);
+
+      await pollJobCompletions({ store: s, agentClient: c, logger: silentLog, config: tinyCapConfig });
+
+      // The original object must be structurally identical to the pre-call snapshot.
+      expect(bigResult).toEqual(snapshot);
+      s.close();
+    });
   });
 });
