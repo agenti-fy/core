@@ -21,7 +21,6 @@ describe('buildManifest — name', () => {
         prefix: 'agentify-alice',
         persona,
         callbackUrl: 'http://localhost:3000/callback',
-        ownerType: 'user',
       });
       expect(manifest.name).toBe(`agentify-alice-${persona}`);
     }
@@ -36,7 +35,6 @@ describe('buildManifest — name', () => {
         prefix: longPrefix,
         persona: 'orchestrator',
         callbackUrl: 'http://localhost:3000/callback',
-        ownerType: 'user',
       }),
     ).toThrow(ManifestNameTooLongError);
   });
@@ -50,7 +48,6 @@ describe('buildManifest — name', () => {
         prefix,
         persona: 'orchestrator',
         callbackUrl: 'http://localhost:3000/callback',
-        ownerType: 'user',
       });
     } catch (err) {
       caught = err;
@@ -68,7 +65,6 @@ describe('buildManifest — name', () => {
         prefix: 'averylongprefixstring',
         persona: 'orchestrator',
         callbackUrl: 'http://localhost:3000/callback',
-        ownerType: 'user',
       }),
     ).not.toThrow();
   });
@@ -84,7 +80,6 @@ describe('buildManifest — permissions', () => {
       prefix: 'test',
       persona: 'theorist',
       callbackUrl: 'http://localhost:3000/callback',
-      ownerType: 'user',
     });
     expect(manifest.default_permissions).toStrictEqual(APP_PERMISSIONS);
   });
@@ -98,7 +93,6 @@ describe('buildManifest — permissions', () => {
       prefix: 'test',
       persona: 'theorist',
       callbackUrl: 'http://localhost:3000/callback',
-      ownerType: 'user',
     });
     expect(manifest.default_permissions.wiki).toBe('write');
   });
@@ -108,7 +102,6 @@ describe('buildManifest — permissions', () => {
       prefix: 'test',
       persona: 'theorist',
       callbackUrl: 'http://localhost:3000/callback',
-      ownerType: 'user',
     });
     expect(manifest.default_events).toHaveLength(0);
     expect(Array.isArray(manifest.default_events)).toBe(true);
@@ -125,7 +118,6 @@ describe('buildManifest — shape', () => {
       prefix: 'test',
       persona: 'theorist',
       callbackUrl: 'http://localhost:3000/callback',
-      ownerType: 'user',
     });
     expect(manifest.public).toBe(false);
   });
@@ -135,7 +127,6 @@ describe('buildManifest — shape', () => {
       prefix: 'test',
       persona: 'theorist',
       callbackUrl: 'http://localhost:3000/callback',
-      ownerType: 'user',
     });
     expect(manifest.setup_on_update).toBe(false);
   });
@@ -145,7 +136,6 @@ describe('buildManifest — shape', () => {
       prefix: 'test',
       persona: 'theorist',
       callbackUrl: 'http://localhost:3000/callback',
-      ownerType: 'user',
     });
     expect(manifest.callback_urls).toEqual([]);
   });
@@ -156,7 +146,6 @@ describe('buildManifest — shape', () => {
       prefix: 'test',
       persona: 'theorist',
       callbackUrl,
-      ownerType: 'user',
     });
     expect(manifest.redirect_url).toBe(callbackUrl);
   });
@@ -166,7 +155,6 @@ describe('buildManifest — shape', () => {
       prefix: 'test',
       persona: 'theorist',
       callbackUrl: 'http://localhost:3000/callback',
-      ownerType: 'user',
     }) as unknown as Record<string, unknown>;
     expect(manifest).not.toHaveProperty('hook_attributes');
   });
@@ -176,7 +164,6 @@ describe('buildManifest — shape', () => {
       prefix: 'test',
       persona: 'theorist',
       callbackUrl: 'http://localhost:3000/callback',
-      ownerType: 'user',
     }) as unknown as Record<string, unknown>;
     expect(manifest).not.toHaveProperty('setup_url');
   });

@@ -127,13 +127,6 @@ export interface BuildManifestArgs {
    * in the manifest flow (the `?code=&state=` callback).
    */
   callbackUrl: string;
-  /** Whether the target is a personal user account or an organisation. */
-  ownerType: 'user' | 'org';
-  /**
-   * Organisation login — required when `ownerType === 'org'`;
-   * ignored for personal accounts.
-   */
-  orgLogin?: string;
 }
 
 /**
