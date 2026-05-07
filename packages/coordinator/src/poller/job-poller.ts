@@ -110,9 +110,9 @@ async function reconcileJob(
   // NOTE: kb_writes[*].bytes is agent-reported and purely informational metadata.
   // It is never consulted for any quota or control-flow decision here — the
   // enforcement gate is the serialized-payload size check immediately below.
-  const serialized = JSON.stringify(result);
+  let resultJson = JSON.stringify(result);
   // .length returns UTF-16 code units (not UTF-8 bytes); see maxResultJsonBytes JSDoc.
-  const serializedBytes = serialized.length;
+  const serializedBytes = resultJson.length;
 
   // Defensive: do not mutate the input result in-place. Build a shallow clone on
   // the breach path so callers that retain a reference observe no side-effects.
@@ -137,6 +137,8 @@ async function reconcileJob(
         ? { ...result.error, message: `${result.error.message}; ${capMsg}` }
         : { message: capMsg },
     };
+    // Re-serialize after mutation so the stored payload reflects the trim.
+    resultJson = JSON.stringify(persisted);
     deps.metrics?.recordJobCompletion(persisted.method, 'task_error');
   } else {
     deps.metrics?.recordJobCompletion(result.method, result.outcome);
@@ -146,7 +148,7 @@ async function reconcileJob(
   deps.store.updateJobStatus(job.job_id, finalStatus, {
     completed_at: Date.now(),
     outcome: persisted.outcome,
-    result_json: JSON.stringify(persisted),
+    result_json: resultJson,
   });
   deps.logger.info(
     {
