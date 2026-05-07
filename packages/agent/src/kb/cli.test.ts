@@ -440,11 +440,17 @@ describe('cmdAppend — happy path (builtin persona: tinkerer)', () => {
 
     expect(mockWriteFile).toHaveBeenCalledOnce();
     const [, written] = mockWriteFile.mock.calls[0] as [string, string, string];
-    expect(written).toContain('## 2024-06-15 —');
-    expect(written).toContain('#42');
-    expect(written).toContain('j_test');
+    // New entry shape: heading is `## <date> · <source> · <jobId>`, body verbatim.
+    expect(written).toContain('## 2024-06-15 · #42 · j_test');
     expect(written).toContain('🔧 **The Tinkerer** · Implementation Specialist');
-    expect(written).toContain('My KB finding');
+    // Body must appear after the heading as its own paragraph, not on the heading line.
+    const headingIdx = written.indexOf('## 2024-06-15');
+    const bodyIdx = written.indexOf('My KB finding');
+    expect(bodyIdx).toBeGreaterThan(headingIdx);
+    // The heading must NOT swallow the body — guard against the old behavior
+    // that put the entire body on the `## ` line.
+    const headingEnd = written.indexOf('\n', headingIdx);
+    expect(written.slice(headingIdx, headingEnd)).not.toContain('My KB finding');
   });
 
   it('splices entry after the leading --- separator', async () => {

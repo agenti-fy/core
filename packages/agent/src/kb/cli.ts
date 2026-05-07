@@ -100,34 +100,41 @@ interface FormatEntryOpts {
 /**
  * Build a formatted KB entry block (without a leading `---` separator).
  *
- * The first non-empty line of `body` becomes the heading title; remaining
- * lines form the body paragraph below the heading.
- *
  * Output shape:
- *   ## YYYY-MM-DD — <title> (<jobId>[, <source>])
+ *   ## YYYY-MM-DD · <source-or-jobId> · <jobId-if-source>
  *
- *   <remaining body>
+ *   <body verbatim>
  *
  *   — <signature>
+ *
+ * The heading is fixed (date + refs) — earlier versions used the first
+ * non-empty line of `body` as the heading "title", but in practice agents
+ * write the entire entry as one long sentence with no internal newlines,
+ * which produced ## headings hundreds of characters wide and rendered the
+ * entire entry as a giant title with no body. A predictable date+refs
+ * heading + body-paragraph layout renders cleanly regardless of how the
+ * agent structured the body. Agents can use Markdown inside the body
+ * (sub-headings `###`, lists, code blocks) freely.
  */
 function formatEntry({ body, persona, jobId, source }: FormatEntryOpts): string {
   const date = utcDateString();
-  const lines = body.split('\n');
 
-  // First non-empty line → heading title; rest → body paragraph.
-  const firstIdx = lines.findIndex((l) => l.trim() !== '');
-  const title = firstIdx >= 0 ? (lines[firstIdx] ?? '').trim() : '(no title)';
-  const rest = (firstIdx >= 0 ? lines.slice(firstIdx + 1) : []).join('\n').trimStart();
+  // Heading parts: date · source (if any) · jobId. `·` keeps it scannable
+  // without overloading `—` (which the signature line uses).
+  const headingParts = [date, source, jobId].filter(
+    (s): s is string => s != null && s.length > 0,
+  );
+  const heading = `## ${headingParts.join(' · ')}`;
 
-  // Refs in the heading parenthetical: jobId always present; source if provided.
-  const refs = [source, jobId].filter((s): s is string => s != null && s.length > 0).join(', ');
-  const heading = `## ${date} — ${title} (${refs})`;
+  // Trim leading/trailing whitespace from the body but preserve internal
+  // structure (blank lines, indentation, fenced blocks).
+  const trimmedBody = body.replace(/^\s+|\s+$/g, '');
 
   const sig = kbPersonaSignature(persona);
 
   const parts: string[] = [heading, ''];
-  if (rest.length > 0) {
-    parts.push(rest, '');
+  if (trimmedBody.length > 0) {
+    parts.push(trimmedBody, '');
   }
   parts.push(`— ${sig}`);
 

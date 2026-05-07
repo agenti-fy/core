@@ -367,9 +367,10 @@ describe('KB roundtrip smoke (write then read through stub adapters)', () => {
       expect(kbContent, 'KB-Tinkerer.md must contain the synthetic marker').toContain(
         SYNTHETIC_MARKER,
       );
-      // agentify-kb stamps entries with `## YYYY-MM-DD — <title> (<refs>)`.
+      // agentify-kb stamps entries with `## YYYY-MM-DD · <source>? · <jobId>`
+      // and the body verbatim on subsequent lines.
       expect(kbContent, 'KB-Tinkerer.md must have a ## date heading').toMatch(
-        /## \d{4}-\d{2}-\d{2} — /,
+        /## \d{4}-\d{2}-\d{2} · /,
       );
       // The source-issue reference (#999) must appear in the heading refs.
       expect(kbContent, 'KB-Tinkerer.md must reference issue #999').toContain(
