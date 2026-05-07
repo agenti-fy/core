@@ -379,7 +379,7 @@ export async function loadState(
   if (result.data.version === 1) {
     if (!passphrase) {
       throw new Error(
-        `State file at "${filePath}" is version 1 (plaintext PEMs) and must be ` +
+        `State file at "${filePath}" is version 1 (plaintext secrets) and must be ` +
           'migrated to v2 (encrypted at rest). ' +
           'Supply a passphrase via AGENTIFY_SETUP_PASSPHRASE or run agentify-setup interactively.',
       );

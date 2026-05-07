@@ -531,6 +531,16 @@ describe('loadState — v1 → v2 migration', () => {
     expect(stillV1['version']).toBe(1);
   });
 
+  it('v1-no-passphrase error message uses "plaintext secrets" (regression guard)', async () => {
+    // Write a v1 fixture to disk.
+    const filePath = path.join(tmpDir, 'setup-v1-test.json');
+    await fs.writeFile(filePath, JSON.stringify(V1_FIXTURE), 'utf8');
+
+    const err = await loadState('v1-test', { dir: tmpDir }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('(plaintext secrets)');
+  });
+
   // ── Full round-trip tests using the comprehensive V1_FULL_FIXTURE ──────────
 
   it('migrates a v1 file in place and returns plaintext state', async () => {
