@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +10,9 @@ import type { GetJobResult } from '../agent-client.js';
 import { pollJobCompletions } from './job-poller.js';
 
 const silentLog: Logger = pino({ level: 'silent' });
+
+/** Default config for tests — generous cap so existing happy-path jobs are unaffected. */
+const DEFAULT_CONFIG = { maxResultJsonBytes: 256 * 1024 };
 
 function freshStore(): CoordinatorStore {
   const dir = mkdtempSync(join(tmpdir(), 'agentify-job-poller-'));
@@ -115,7 +118,7 @@ describe('pollJobCompletions', () => {
     });
     client.setJob(a.url, 'j_1', jobResult());
 
-    await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+    await pollJobCompletions({ store, agentClient: client, logger: silentLog, config: DEFAULT_CONFIG });
 
     const updated = store.listRecentJobs();
     expect(updated).toHaveLength(1);
@@ -136,7 +139,7 @@ describe('pollJobCompletions', () => {
       last_failure: null,
     });
 
-    await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+    await pollJobCompletions({ store, agentClient: client, logger: silentLog, config: DEFAULT_CONFIG });
 
     expect(store.listOpenJobs()[0]?.status).toBe('running');
     store.close();
@@ -156,7 +159,7 @@ describe('pollJobCompletions', () => {
     });
     client.setJob(a.url, 'j_inflight', 'in_flight');
 
-    await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+    await pollJobCompletions({ store, agentClient: client, logger: silentLog, config: DEFAULT_CONFIG });
 
     // Job stays running, not marked orphaned. Next poll tick will resolve it.
     const open = store.listOpenJobs();
@@ -177,7 +180,7 @@ describe('pollJobCompletions', () => {
     });
     // No job entry at all → fake returns missing.
 
-    await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+    await pollJobCompletions({ store, agentClient: client, logger: silentLog, config: DEFAULT_CONFIG });
 
     const recent = store.listRecentJobs();
     expect(recent[0]?.status).toBe('failed');
@@ -196,7 +199,7 @@ describe('pollJobCompletions', () => {
     });
     client.setJob(a.url, 'j_1', jobResult({ outcome: 'sdk_failure', session_id: 'sess-x' }));
 
-    await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+    await pollJobCompletions({ store, agentClient: client, logger: silentLog, config: DEFAULT_CONFIG });
 
     expect(store.getSession(a.agent_id, 'acme/api')).toBeNull();
     store.close();
@@ -229,7 +232,7 @@ describe('pollJobCompletions', () => {
       const a = setupIdleAgent(store, client);
       client.setJob(a.url, 'j_1', planResult());
 
-      await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+      await pollJobCompletions({ store, agentClient: client, logger: silentLog, config: DEFAULT_CONFIG });
 
       const plans = store.listOpenPlans();
       expect(plans).toHaveLength(1);
@@ -243,7 +246,7 @@ describe('pollJobCompletions', () => {
       const a = setupIdleAgent(store, client);
       client.setJob(a.url, 'j_1', planResult({ artifacts: { plan: { child_issues: [] } } }));
 
-      await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+      await pollJobCompletions({ store, agentClient: client, logger: silentLog, config: DEFAULT_CONFIG });
 
       expect(store.listOpenPlans()).toHaveLength(0);
       store.close();
@@ -261,7 +264,7 @@ describe('pollJobCompletions', () => {
       });
       client.setJob(a.url, 'j_1', jobResult({ method: 'implement', artifacts: {} }));
 
-      await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+      await pollJobCompletions({ store, agentClient: client, logger: silentLog, config: DEFAULT_CONFIG });
 
       expect(store.listOpenPlans()).toHaveLength(0);
       store.close();
@@ -275,7 +278,7 @@ describe('pollJobCompletions', () => {
         planResult({ outcome: 'task_error', artifacts: { plan: { child_issues: [1, 2] } } }),
       );
 
-      await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+      await pollJobCompletions({ store, agentClient: client, logger: silentLog, config: DEFAULT_CONFIG });
 
       expect(store.listOpenPlans()).toHaveLength(0);
       store.close();
@@ -295,9 +298,100 @@ describe('pollJobCompletions', () => {
     });
     client.setJob(a2.url, 'j_2', jobResult({ job_id: 'j_2', target_id: 9 }));
 
-    await pollJobCompletions({ store, agentClient: client, logger: silentLog });
+    await pollJobCompletions({ store, agentClient: client, logger: silentLog, config: DEFAULT_CONFIG });
 
     expect(store.listRecentJobs()[0]?.job_id).toBe('j_2');
     store.close();
+  });
+
+  describe('result_json payload-size cap', () => {
+    /** Helper: register agent, insert active job, configure it as IDLE with the given result. */
+    function setupCompletedAgent(
+      s: CoordinatorStore,
+      c: FakeAgentClient,
+      result: JobResult,
+      jobId = 'j_1',
+    ): { agent_id: string; url: string } {
+      const a = regAgent(s);
+      s.recordHeartbeat(a.agent_id, 'BUSY');
+      insertActiveJob(s, a.agent_id, { job_id: jobId });
+      c.setStatus(a.url, {
+        status: 'IDLE',
+        agent_id: a.agent_id,
+        current_job: null,
+        last_failure: null,
+      });
+      c.setJob(a.url, jobId, result);
+      return a;
+    }
+
+    it('when result_json exceeds cap, persists task_error with artifacts: {}', async () => {
+      const s = freshStore();
+      const c = new FakeAgentClient();
+      // A tiny cap that any non-trivial JobResult will blow past.
+      const tinyCapConfig = { maxResultJsonBytes: 10 };
+      // Inflate by stuffing a large final_text (easy to produce in a test; in
+      // production, final_text is already truncated at the agent boundary).
+      const bigResult = jobResult({ final_text: 'x'.repeat(200) });
+      setupCompletedAgent(s, c, bigResult);
+
+      await pollJobCompletions({ store: s, agentClient: c, logger: silentLog, config: tinyCapConfig });
+
+      const jobs = s.listRecentJobs();
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0]?.outcome).toBe('task_error');
+      const persisted: unknown = JSON.parse(jobs[0]?.result_json ?? '{}');
+      expect((persisted as { artifacts: unknown }).artifacts).toEqual({});
+      expect(
+        ((persisted as { error: { message: string } }).error?.message),
+      ).toContain('MAX_RESULT_JSON_BYTES');
+      s.close();
+    });
+
+    it('logs a warning when result_json exceeds the cap', async () => {
+      const s = freshStore();
+      const c = new FakeAgentClient();
+      const warnSpy = vi.fn();
+      // Override only warn so we can assert on it; other methods stay silent.
+      const spyLog = { ...silentLog, warn: warnSpy } as unknown as Logger;
+      const tinyCapConfig = { maxResultJsonBytes: 10 };
+      const bigResult = jobResult({ final_text: 'x'.repeat(200) });
+      setupCompletedAgent(s, c, bigResult);
+
+      await pollJobCompletions({ store: s, agentClient: c, logger: spyLog, config: tinyCapConfig });
+
+      // pino logs with (obj, msg) signature; the message is the second argument.
+      const capWarnings = warnSpy.mock.calls.filter(
+        (args: unknown[]) =>
+          typeof args[1] === 'string' && args[1].includes('MAX_RESULT_JSON_BYTES'),
+      );
+      expect(capWarnings.length).toBeGreaterThan(0);
+      // The structured object (first arg) should carry the diagnostic fields.
+      const obj = capWarnings[0]?.[0] as Record<string, unknown>;
+      expect(typeof obj['serialized_bytes']).toBe('number');
+      expect(typeof obj['cap']).toBe('number');
+      s.close();
+    });
+
+    it('does not replace artifacts when result_json is within the cap', async () => {
+      const s = freshStore();
+      const c = new FakeAgentClient();
+      // Use a cap large enough for any realistic test result.
+      const generousConfig = { maxResultJsonBytes: 1024 * 1024 };
+      const normalResult = jobResult({ artifacts: { plan: { child_issues: [1, 2] } } });
+      setupCompletedAgent(s, c, normalResult);
+
+      await pollJobCompletions({ store: s, agentClient: c, logger: silentLog, config: generousConfig });
+
+      const jobs = s.listRecentJobs();
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0]?.outcome).toBe('success');
+      const persisted: unknown = JSON.parse(jobs[0]?.result_json ?? '{}');
+      expect(
+        (persisted as { artifacts: { plan?: { child_issues?: number[] } } }).artifacts?.plan
+          ?.child_issues,
+      ).toEqual([1, 2]);
+      s.close();
+    });
   });
 });

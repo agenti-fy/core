@@ -69,6 +69,14 @@ const ConfigSchema = z.object({
     .default(['conductor', 'skeptic', 'scribe', 'crafter']),
 
   /**
+   * Hard cap on the serialized job result (`JSON.stringify(result).length`) before
+   * it lands in the `jobs.result_json` SQLite column. A job whose result exceeds this
+   * cap is recorded as `task_error` with the artifacts blob replaced by `{}` to keep
+   * the row valid JSON for downstream consumers. Defaults to 256 KiB.
+   */
+  maxResultJsonBytes: z.coerce.number().int().positive().default(256 * 1024),
+
+  /**
    * If true, the coordinator skips constructing the GitHub client and the
    * GitHub-driven loops. Useful for tests/smoke runs where no real App
    * credentials are available.
@@ -117,6 +125,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     prMonitorIntervalSeconds: env.PR_MONITOR_INTERVAL_S || undefined,
     prMonitorRequiredReviewers: env.PR_MONITOR_REQUIRED_REVIEWERS,
     prMaxReviewCycles: env.PR_MAX_REVIEW_CYCLES || undefined,
+    maxResultJsonBytes: env.MAX_RESULT_JSON_BYTES || undefined,
     disableGithub: env.DISABLE_GITHUB,
   });
 }

@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   let final;
   while (Date.now() < deadline) {
     await sleep(250);
-    await pollJobCompletions({ store, agentClient, logger });
+    await pollJobCompletions({ store, agentClient, logger, config });
     final = store.listOpenJobs();
     if (final.length === 0) break;
   }
