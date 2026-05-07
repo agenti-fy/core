@@ -88,6 +88,25 @@ export interface ResolveOptions {
    * custom souls would produce the literal `"custom"` and break the label.
    */
   personaName: string;
+  /**
+   * Absolute path to the per-job wiki worktree, or null when the KB is
+   * unavailable for this run. Surfaces as `{{kb_clone_dir}}` in skill
+   * prompts; null resolves to an empty string so prompts can detect KB
+   * absence with a simple `if kb_clone_dir is empty` guard.
+   */
+  kbCloneDir: string | null;
+  /**
+   * Name of the shared KB page visible to every persona, e.g. `"KB-Global"`.
+   * Surfaces as `{{kb_global_page}}` in skill prompts.
+   */
+  kbGlobalPage: string;
+  /**
+   * Name of the persona-scoped KB page, e.g. `"KB-Tinkerer"`.
+   * Derived by the caller via `kbPersonaTitle()` so the casing rules are
+   * owned by one place (wiki.ts) and not duplicated in the resolver.
+   * Surfaces as `{{kb_persona_page}}` in skill prompts.
+   */
+  kbPersonaPage: string;
 }
 
 /**
@@ -127,9 +146,16 @@ export function resolveSkill(opts: ResolveOptions): ResolvedSkill {
   // Only interpolate the stable signature token. Per-job tokens ({{repo}},
   // {{target_id}}, {{persona}}, {{agent_name}}) are left as literal placeholders
   // in the template so the stable section is byte-identical across different jobs.
+  // KB vars are interpolated here: kb_global_page and kb_persona_page derive
+  // from the soul/config (stable per agent), and kb_clone_dir is per-job but
+  // skill prompts guard against it being empty rather than using it as a
+  // cache-keyed value.
   const stableTemplate = interpolate(skillTemplate, {
     signature: signatureFor(opts.soul),
     common: loadCommon(),
+    kb_clone_dir: opts.kbCloneDir ?? '',
+    kb_global_page: opts.kbGlobalPage,
+    kb_persona_page: opts.kbPersonaPage,
   });
 
   const volatile = buildTaskVars({

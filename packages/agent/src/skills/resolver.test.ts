@@ -44,6 +44,16 @@ const BASE_OPTS = {
   method: 'implement' as const,
   repo: 'owner/repo',
   target_id: 1,
+  kbCloneDir: null as string | null,
+  kbGlobalPage: 'KB-Global',
+  kbPersonaPage: 'KB-Tinkerer',
+};
+
+/** KB defaults for tests that do not care about KB values. */
+const KB_DEFAULTS = {
+  kbCloneDir: null as string | null,
+  kbGlobalPage: 'KB-Global',
+  kbPersonaPage: 'KB-Tinkerer',
 };
 
 describe('SECURITY_PREAMBLE', () => {
@@ -210,6 +220,7 @@ describe('resolveSkill — security preamble', () => {
       repo: 'owner/repo',
       target_id: 1,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     expect(result.personaBody.startsWith(SECURITY_PREAMBLE.trimEnd())).toBe(true);
   });
@@ -221,6 +232,7 @@ describe('resolveSkill — security preamble', () => {
       repo: 'owner/repo',
       target_id: 2,
       personaName: 'my-agent',
+      ...KB_DEFAULTS,
     });
     expect(result.personaBody.startsWith(SECURITY_PREAMBLE.trimEnd())).toBe(true);
   });
@@ -232,6 +244,7 @@ describe('resolveSkill — security preamble', () => {
       repo: 'owner/repo',
       target_id: 42,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     expect(result.systemPrompt.stable).toContain(SECURITY_PREAMBLE.trim());
   });
@@ -244,6 +257,7 @@ describe('resolveSkill — security preamble', () => {
       repo: 'owner/repo',
       target_id: 1,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     expect(result.personaBody).toContain(soul.personaBody);
   });
@@ -255,6 +269,7 @@ describe('resolveSkill — security preamble', () => {
       repo: 'owner/repo',
       target_id: 1,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     expect(result.systemPrompt.stable).toContain('Knowledge-base content');
     expect(result.systemPrompt.stable).toContain('semi-trusted');
@@ -270,6 +285,7 @@ describe('resolveSkill — stable/volatile split', () => {
       repo: 'acme/api',
       target_id: 1,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     const b = resolveSkill({
       soul,
@@ -277,6 +293,7 @@ describe('resolveSkill — stable/volatile split', () => {
       repo: 'other-org/other-repo',
       target_id: 9999,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     expect(a.systemPrompt.stable).toBe(b.systemPrompt.stable);
   });
@@ -289,6 +306,7 @@ describe('resolveSkill — stable/volatile split', () => {
       repo: 'acme/api',
       target_id: 42,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     expect(result.systemPrompt.volatile).toContain('acme/api');
     expect(result.systemPrompt.volatile).toContain('42');
@@ -303,6 +321,7 @@ describe('resolveSkill — stable/volatile split', () => {
       repo: 'unique-repo-xyz-12345',
       target_id: 99887,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     expect(result.systemPrompt.stable).not.toContain('unique-repo-xyz-12345');
     expect(result.systemPrompt.stable).not.toContain('99887');
@@ -316,6 +335,7 @@ describe('resolveSkill — stable/volatile split', () => {
       repo: 'acme/api',
       target_id: 42,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     expect(result.skillPrompt).toContain(result.systemPrompt.volatile);
   });
@@ -328,6 +348,7 @@ describe('resolveSkill — stable/volatile split', () => {
       repo: 'acme/api',
       target_id: 1,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     const lines = result.systemPrompt.volatile.split('\n').length;
     expect(lines).toBeLessThanOrEqual(8);
@@ -342,6 +363,7 @@ describe('resolveSkill — stable/volatile split', () => {
       repo: 'acme/api',
       target_id: 42,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     expect(result.source).toBe('soul');
     expect(result.skillPrompt).toContain(result.systemPrompt.volatile);
@@ -357,6 +379,7 @@ describe('resolveSkill — stable/volatile split', () => {
       repo: 'acme/api',
       target_id: 1,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     const b = resolveSkill({
       soul,
@@ -364,6 +387,7 @@ describe('resolveSkill — stable/volatile split', () => {
       repo: 'different-org/different-repo',
       target_id: 5555,
       personaName: 'tinkerer',
+      ...KB_DEFAULTS,
     });
     expect(a.systemPrompt.stable).toBe(b.systemPrompt.stable);
   });
@@ -376,7 +400,100 @@ describe('resolveSkill — stable/volatile split', () => {
       repo: 'acme/api',
       target_id: 1,
       personaName: 'tinkerer',
+      kbCloneDir: null,
+      kbGlobalPage: 'KB-Global',
+      kbPersonaPage: 'KB-Tinkerer',
     });
     expect(result.systemPrompt.stable).toContain(result.personaBody);
+  });
+});
+
+describe('resolveSkill — KB template variables', () => {
+  it('{{kb_clone_dir}} resolves to the supplied path', () => {
+    const soul = makeSoul({ skillOverrides: { implement: 'Clone dir: {{kb_clone_dir}}.' } });
+    const result = resolveSkill({
+      ...BASE_OPTS,
+      soul,
+      personaName: 'tinkerer',
+      kbCloneDir: '/workspaces/acme/api/.kb/j_123',
+      kbGlobalPage: 'KB-Global',
+      kbPersonaPage: 'KB-Tinkerer',
+    });
+    expect(result.skillPrompt).toContain('Clone dir: /workspaces/acme/api/.kb/j_123.');
+    expect(result.skillPrompt).not.toContain('{{kb_clone_dir}}');
+  });
+
+  it('{{kb_clone_dir}} resolves to empty string when kbCloneDir is null', () => {
+    const soul = makeSoul({ skillOverrides: { implement: 'Clone dir: [{{kb_clone_dir}}].' } });
+    const result = resolveSkill({
+      ...BASE_OPTS,
+      soul,
+      personaName: 'tinkerer',
+      kbCloneDir: null,
+      kbGlobalPage: 'KB-Global',
+      kbPersonaPage: 'KB-Tinkerer',
+    });
+    // Must be replaced with empty string, NOT left as {{kb_clone_dir}}.
+    expect(result.skillPrompt).toContain('Clone dir: [].');
+    expect(result.skillPrompt).not.toContain('{{kb_clone_dir}}');
+  });
+
+  it('{{kb_global_page}} resolves to the supplied page name', () => {
+    const soul = makeSoul({ skillOverrides: { implement: 'Read {{kb_global_page}}.md.' } });
+    const result = resolveSkill({
+      ...BASE_OPTS,
+      soul,
+      personaName: 'tinkerer',
+      kbCloneDir: null,
+      kbGlobalPage: 'KB-Global',
+      kbPersonaPage: 'KB-Tinkerer',
+    });
+    expect(result.skillPrompt).toContain('Read KB-Global.md.');
+    expect(result.skillPrompt).not.toContain('{{kb_global_page}}');
+  });
+
+  it('{{kb_persona_page}} resolves to the supplied page name', () => {
+    const soul = makeSoul({ skillOverrides: { implement: 'Read {{kb_persona_page}}.md.' } });
+    const result = resolveSkill({
+      ...BASE_OPTS,
+      soul,
+      personaName: 'tinkerer',
+      kbCloneDir: null,
+      kbGlobalPage: 'KB-Global',
+      kbPersonaPage: 'KB-Tinkerer',
+    });
+    expect(result.skillPrompt).toContain('Read KB-Tinkerer.md.');
+    expect(result.skillPrompt).not.toContain('{{kb_persona_page}}');
+  });
+
+  it('{{kb_global_page}} and {{kb_persona_page}} work with custom soul', () => {
+    const soul = makeCustomSoul();
+    soul.skillOverrides['implement'] = 'Global: {{kb_global_page}}, Persona: {{kb_persona_page}}.';
+    const result = resolveSkill({
+      soul,
+      method: 'implement',
+      repo: 'owner/repo',
+      target_id: 1,
+      personaName: 'my-agent',
+      kbCloneDir: '/tmp/kb',
+      kbGlobalPage: 'KB-Global',
+      kbPersonaPage: 'KB-My-Agent',
+    });
+    expect(result.skillPrompt).toContain('Global: KB-Global, Persona: KB-My-Agent.');
+  });
+
+  it('default skill prompts do not contain raw {{kb_clone_dir}} after interpolation', () => {
+    // Default prompts don't reference KB vars yet (Phase 4), but ensuring
+    // interpolation is attempted means no stray {{kb_clone_dir}} leaks out.
+    const result = resolveSkill({
+      ...BASE_OPTS,
+      personaName: 'tinkerer',
+      kbCloneDir: '/tmp/kb',
+      kbGlobalPage: 'KB-Global',
+      kbPersonaPage: 'KB-Tinkerer',
+    });
+    expect(result.skillPrompt).not.toContain('{{kb_clone_dir}}');
+    expect(result.skillPrompt).not.toContain('{{kb_global_page}}');
+    expect(result.skillPrompt).not.toContain('{{kb_persona_page}}');
   });
 });
