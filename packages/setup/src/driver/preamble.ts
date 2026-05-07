@@ -188,7 +188,7 @@ function validateRepoWithGh(repoSlug: string, spawn: GhExec): RepoInfo {
 }
 
 /**
- * Attempt to infer the owner type (personal user vs. organisation) by calling
+ * Attempt to infer the owner type (personal user vs. organization) by calling
  * `gh api /users/<owner>`, which returns `{ type: "User" | "Organization" }`.
  *
  * Returns `null` when the inference fails (network error, unexpected JSON,
@@ -214,7 +214,7 @@ function inferOwnerType(
 }
 
 /**
- * Ask the user to choose between personal user account and organisation.
+ * Ask the user to choose between personal user account and organization.
  */
 async function askOwnerType(
   io: IoStreams,
