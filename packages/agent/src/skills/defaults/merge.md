@@ -28,13 +28,23 @@ issue.
    `git fetch origin && git rebase origin/<default-branch>`
    Read conflict markers on each path (`<<<<<<<`/`=======`/`>>>>>>>`); reconstruct a version preserving both sides' semantics (see `git help merge`). Run typecheck/lint/test before staging. Force-push with lease: `git push --force-with-lease origin <pr-branch>`.
    Escalate to `needs-human` (with a comment explaining what you tried) only when the conflict requires product judgment beyond the diff and tests cannot be fixed within the conflict scope.
-5. Merge and delete: `gh pr merge {{target_id}} -R {{repo}} --squash --delete-branch`
-6. Close the linked issue if not auto-closed: `gh issue close <n> -R {{repo}} --reason completed`
-7. Sweep the merged PR for unresolved follow-ups from peer agents or human reviewers (not PR-author self-talk, not CI). For each actionable item not addressed by the merged diff and not already tracked, create a tracking issue:
+5. **Re-target any PRs stacked on this branch BEFORE the merge — this step is IRREVERSIBLE if skipped.** Other open PRs that target this PR's head branch will be auto-closed by GitHub when `--delete-branch` runs. The auto-close uses the `base_ref_deleted` event, which is a TERMINAL state: GitHub will refuse both `gh pr reopen` ("Could not open the pull request") and `gh pr edit --base` ("Cannot change the base branch of a closed pull request"). Recovery requires opening a fresh PR with `gh pr create --head <stale-branch> --base <default>` and manually re-applying every routing label — work the operator has to do by hand. Re-target the children FIRST so they survive — the diff recomputes against the default branch after merge and they stay reviewable in place:
+    ```bash
+    HEAD_REF=$(gh pr view {{target_id}} -R {{repo}} --json headRefName --jq .headRefName)
+    DEFAULT_BRANCH=$(gh repo view {{repo}} --json defaultBranchRef --jq .defaultBranchRef.name)
+    for child in $(gh pr list -R {{repo}} --state open --base "$HEAD_REF" --json number --jq '.[].number'); do
+      gh pr edit "$child" -R {{repo}} --base "$DEFAULT_BRANCH"
+      gh pr comment "$child" -R {{repo}} -b "Re-targeted to \`$DEFAULT_BRANCH\` ahead of #{{target_id}} merge to avoid auto-close on \`--delete-branch\`. {{signature}}"
+    done
+    ```
+   This is defense-in-depth: `implement.md` forbids stacked PRs in the first place, but a misbehaving implementer that stacked anyway would otherwise lose work at this step. **If `gh pr edit --base` fails for any child** (perms, branch protection, GraphQL error), STOP — do NOT proceed to step 6. Leave the merge label in place, post a comment on this PR explaining which child failed to re-target, and apply `needs-human`. Merging into a child-PR's deleted base destroys their work even if the merge itself succeeds.
+6. Merge and delete: `gh pr merge {{target_id}} -R {{repo}} --squash --delete-branch`
+7. Close the linked issue if not auto-closed: `gh issue close <n> -R {{repo}} --reason completed`
+8. Sweep the merged PR for unresolved follow-ups from peer agents or human reviewers (not PR-author self-talk, not CI). For each actionable item not addressed by the merged diff and not already tracked, create a tracking issue:
    `gh issue create -R {{repo}} -t "Follow-up from #{{target_id}}: <title>" -b "..." -l "agent:orchestrator:plan"`
    Check for duplicates first: `gh issue list -R {{repo}} --search "<keyword>"`. When in doubt, create the issue.
-8. Remove all `agent:*` routing labels from the merged PR.
-9. **[OPTIONAL] Contribute to KB** — only if this merge surfaced a non-obvious, durable insight that every future merger of this repo needs to know (not observations about this specific PR). Skip if `{{kb_clone_dir}}` is empty or if nothing was learned. Do NOT add this step on the rebase-failed retry path — only on the success tail after a completed merge.
+9. Remove all `agent:*` routing labels from the merged PR.
+10. **[OPTIONAL] Contribute to KB** — only if this merge surfaced a non-obvious, durable insight that every future merger of this repo needs to know (not observations about this specific PR). Skip if `{{kb_clone_dir}}` is empty or if nothing was learned. Do NOT add this step on the rebase-failed retry path — only on the success tail after a completed merge.
     ```bash
     echo "<insight>" | agentify-kb append persona --from-pr {{target_id}}
     ```
@@ -63,6 +73,11 @@ issue.
   commit it came from and why it was dropped.
 - Never resolve a conflict by deleting a test that was failing on the
   resolved tree. Fix the underlying logic instead.
+- Never proceed to `gh pr merge --delete-branch` while any open PR has this
+  PR's head branch as its base. The auto-close that follows is terminal —
+  GitHub refuses reopen and base change after a `base_ref_deleted` event,
+  forcing manual recovery via `gh pr create --head ... --base main` plus
+  re-applying every routing label by hand.
 
 ## Output
 
