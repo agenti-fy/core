@@ -7,7 +7,7 @@
  * {@link RunDeps}         – injectable dependencies (for testing).
  * {@link PhaseOpts}       – common options bag passed to every driver phase.
  * {@link runApps}         – per-persona App-creation loop (driver/apps.ts).
- * {@link runAnthropic}    – stub for the Anthropic credentials phase (#430).
+ * {@link runAnthropic}    – Anthropic auth + tunables driver (#430).
  * {@link runFinalize}     – stub for the .env write + verify phase (#431).
  *
  * Phase contract
@@ -19,10 +19,11 @@
  *
  * Stub implementations
  * --------------------
- * `runAnthropic` and `runFinalize` are exported stubs — they satisfy the
- * {@link PhaseFn} interface and pass all type checks, but do nothing.
- * Issues #430 and #431 will replace the function bodies; the signatures and
- * JSDoc below define the stable surface those issues implement against.
+ * `runFinalize` is an exported stub — it satisfies the
+ * {@link PhaseFn} interface and passes all type checks, but does nothing.
+ * Issue #431 will replace the function body.
+ * `runApps` is the real implementation from driver/apps.ts (#428);
+ * `runAnthropic` is the real implementation from driver/anthropic.ts (#430).
  */
 
 import * as os from 'node:os';
@@ -33,6 +34,7 @@ import { PromptCancelled, printErr, type IoStreams } from './prompts.js';
 import { loadState, saveState, type WizardState } from './state.js';
 import { runPreamble, type GhExec } from './driver/preamble.js';
 import { runApps } from './driver/apps.js';
+import { runAnthropic } from './driver/anthropic.js';
 
 // ── Phase types ───────────────────────────────────────────────────────────────
 
@@ -65,21 +67,10 @@ export type PhaseFn = (opts: PhaseOpts) => Promise<Partial<WizardState>>;
 // index.ts remains the single import point for the orchestrator and its tests.
 export { runApps };
 
-/**
- * **Stub — implemented by #430 (`driver/anthropic.ts`).**
- *
- * Guides the operator through choosing an Anthropic authentication path
- * (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`) and capturing the
- * corresponding secret.  Also collects optional tunables (LOG_LEVEL,
- * MODEL_NAME, …).
- *
- * Returns a partial state that fills in `state.anthropic` and
- * `state.tunables`.
- */
-export const runAnthropic: PhaseFn = async (_opts) => {
-  // TODO (#429): implement Anthropic credentials phase.
-  return {};
-};
+// runAnthropic — real implementation from driver/anthropic.ts (#430).
+// Re-exported here so index.ts remains the single import point for the
+// orchestrator and its tests.
+export { runAnthropic };
 
 /**
  * **Stub — implemented by #430 (`driver/finalize.ts`).**
@@ -91,7 +82,7 @@ export const runAnthropic: PhaseFn = async (_opts) => {
  * Returns an empty partial (all writes are side-effects, not state mutations).
  */
 export const runFinalize: PhaseFn = async (_opts) => {
-  // TODO (#430): implement .env rendering and verify subcommand.
+  // TODO (#431): implement .env rendering and verify subcommand.
   return {};
 };
 
