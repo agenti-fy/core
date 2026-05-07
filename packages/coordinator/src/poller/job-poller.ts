@@ -111,6 +111,7 @@ async function reconcileJob(
   // It is never consulted for any quota or control-flow decision here — the
   // enforcement gate is the serialized-payload size check immediately below.
   const serialized = JSON.stringify(result);
+  // .length returns UTF-16 code units (not UTF-8 bytes); see maxResultJsonBytes JSDoc.
   const serializedBytes = serialized.length;
   if (serializedBytes > deps.config.maxResultJsonBytes) {
     deps.logger.warn(
