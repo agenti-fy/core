@@ -1165,11 +1165,11 @@ Mitigations:
 
 Skills check `$KB_CLONE_DIR` before every KB operation. An empty variable means KB is disabled; skip and continue normally.
 
-Skill prompt templates receive two new interpolation variables when KB is enabled:
+Skill prompt templates receive three new interpolation variables when KB is enabled:
 
-- `{{kb_clone_dir}}` — absolute path to the wiki worktree checkout.
-- `{{kb_global_page}}` — absolute path to `KB-Global.md`.
-- `{{kb_persona_page}}` — absolute path to `KB-<Persona>.md`.
+- `{{kb_clone_dir}}` — absolute path to the wiki worktree checkout; resolves to `""` when KB is unavailable, so prompts can guard with an emptiness check.
+- `{{kb_global_page}}` — name of the shared KB page (e.g. `KB-Global`); compose full paths as `{{kb_clone_dir}}/{{kb_global_page}}.md`.
+- `{{kb_persona_page}}` — name of the persona-scoped KB page (e.g. `KB-Tinkerer`); compose full paths as `{{kb_clone_dir}}/{{kb_persona_page}}.md`.
 
 See `packages/agent/src/skills/defaults/_common.md` for the shared KB read/write convention taught to all skills.
 

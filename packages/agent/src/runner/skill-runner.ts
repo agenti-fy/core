@@ -16,6 +16,7 @@ import type { ClaudeAdapter, SkillRunOutput } from '../claude/adapter.js';
 import type { GitHubAdapter } from '../github/client.js';
 import type { WorktreeManager } from '../git/worktree.js';
 import type { WikiManager, PreparedWiki } from '../kb/wiki.js';
+import { kbPersonaTitle } from '../kb/wiki.js';
 import type { SoulRef } from '../soul/ref.js';
 import type { AgentMetrics } from '../metrics.js';
 import { modelForMethod, resolveSkill } from '../skills/resolver.js';
@@ -208,12 +209,18 @@ export class SkillRunner {
     // review and merge are stateless — don't resume a prior session even if
     // the coordinator supplied one. The agent decides here; live.ts receives null.
     const sessionId = SESSION_PERSISTENT_METHODS.has(req.method) ? req.session_id : null;
+    const soul = this.deps.soulRef.current;
     const skill = resolveSkill({
-      soul: this.deps.soulRef.current,
+      soul,
       method: req.method,
       repo: req.repo,
       target_id: req.target_id,
       personaName: req.persona_name,
+      kbCloneDir: wiki.cloneDir,
+      kbGlobalPage: this.deps.config.kbGlobalPage,
+      // Persona page name is derived via kbPersonaTitle so casing rules live
+      // in one place (wiki.ts) — e.g. tinkerer → KB-Tinkerer.
+      kbPersonaPage: `${this.deps.config.kbPagePrefix}${kbPersonaTitle(soul)}`,
     });
 
     // Hand the model an authenticated `gh` and KB context for the duration of
