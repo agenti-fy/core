@@ -6,6 +6,7 @@
     { "path": "./packages/coordinator" },
     { "path": "./packages/agent" },
     { "path": "./packages/tui" },
+    { "path": "./packages/setup" },
     { "path": "./packages/e2e" }
   ]
 }
