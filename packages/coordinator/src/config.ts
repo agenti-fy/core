@@ -95,8 +95,9 @@ const ConfigSchema = z.object({
 export type Config = z.infer<typeof ConfigSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  // '' from compose's ${VAR-} expansion → undefined → schema default
   return ConfigSchema.parse({
-    port: env.PORT,
+    port: env.PORT || undefined,
     host: env.HOST,
     dataDir: env.DATA_DIR,
     logLevel: env.LOG_LEVEL,
@@ -104,18 +105,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     githubAppPrivateKey: env.GITHUB_APP_PRIVATE_KEY,
     githubAppInstallationId: env.GITHUB_APP_INSTALLATION_ID,
     githubUser: env.GITHUB_USER,
-    defaultPollIntervalSeconds: env.DEFAULT_POLL_INTERVAL_S,
-    installationRefreshSeconds: env.INSTALLATION_REFRESH_S,
-    jobCompletionPollSeconds: env.JOB_COMPLETION_POLL_S,
-    workPollSeconds: env.WORK_POLL_S,
-    failedDispatchRetentionDays: env.FAILED_DISPATCH_RETENTION_DAYS,
-    completedJobRetentionDays: env.COMPLETED_JOB_RETENTION_DAYS,
-    staleJobTimeoutSeconds: env.STALE_JOB_TIMEOUT_S,
-    staleJobSweepSeconds: env.STALE_JOB_SWEEP_S,
-    planCompletionPollSeconds: env.PLAN_COMPLETION_POLL_S,
-    prMonitorIntervalSeconds: env.PR_MONITOR_INTERVAL_S,
+    defaultPollIntervalSeconds: env.DEFAULT_POLL_INTERVAL_S || undefined,
+    installationRefreshSeconds: env.INSTALLATION_REFRESH_S || undefined,
+    jobCompletionPollSeconds: env.JOB_COMPLETION_POLL_S || undefined,
+    workPollSeconds: env.WORK_POLL_S || undefined,
+    failedDispatchRetentionDays: env.FAILED_DISPATCH_RETENTION_DAYS || undefined,
+    completedJobRetentionDays: env.COMPLETED_JOB_RETENTION_DAYS || undefined,
+    staleJobTimeoutSeconds: env.STALE_JOB_TIMEOUT_S || undefined,
+    staleJobSweepSeconds: env.STALE_JOB_SWEEP_S || undefined,
+    planCompletionPollSeconds: env.PLAN_COMPLETION_POLL_S || undefined,
+    prMonitorIntervalSeconds: env.PR_MONITOR_INTERVAL_S || undefined,
     prMonitorRequiredReviewers: env.PR_MONITOR_REQUIRED_REVIEWERS,
-    prMaxReviewCycles: env.PR_MAX_REVIEW_CYCLES,
+    prMaxReviewCycles: env.PR_MAX_REVIEW_CYCLES || undefined,
     disableGithub: env.DISABLE_GITHUB,
   });
 }
