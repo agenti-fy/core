@@ -33,6 +33,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { kbGitIdentity, kbPageFilename, kbPersonaSignature } from './pages.js';
+import { validateKbPageName } from './page-name.js';
 
 const exec = promisify(execFile);
 
@@ -251,6 +252,21 @@ async function cmdAppend(opts: AppendOptions, env: CliEnv): Promise<void> {
   const retryMax = Math.max(1, parseInt(env['KB_WRITE_RETRY_MAX'] ?? '3', 10));
   const entryMaxBytes = Math.max(1, parseInt(env['KB_ENTRY_MAX_BYTES'] ?? '1024', 10));
 
+  // ── 0. Validate resolved page name — trust boundary ────────────────────────
+  // This is the agent-trust boundary: validate the resolved page name stem
+  // BEFORE any fs.* or git operation. Both the --persona argv override and the
+  // AGENTIFY_PERSONA env flow through this check via `persona` above.
+  // See packages/agent/src/kb/page-name.ts for the full security rationale.
+  {
+    const stem = kbPageFilename(opts.scope, persona, globalPage, pagePrefix).replace(/\.md$/, '');
+    try {
+      validateKbPageName(stem);
+    } catch (err) {
+      process.stderr.write(`agentify-kb: ${(err as Error).message}\n`);
+      process.exit(2);
+    }
+  }
+
   // ── 1. Read body from file or stdin ────────────────────────────────────────
   let body = opts.file != null ? await readFile(opts.file, 'utf8') : await readStdin();
   body = body.trimEnd();
@@ -375,6 +391,15 @@ async function cmdRead(scope: 'global' | 'persona', env: CliEnv): Promise<void> 
   const globalPage = env['KB_GLOBAL_PAGE'] ?? 'KB-Global';
   const pagePrefix = env['KB_PAGE_PREFIX'] ?? 'KB-';
   const filename = kbPageFilename(scope, persona, globalPage, pagePrefix);
+
+  // Validate the resolved page name stem before any fs.* operation.
+  try {
+    validateKbPageName(filename.replace(/\.md$/, ''));
+  } catch (err) {
+    process.stderr.write(`agentify-kb: ${(err as Error).message}\n`);
+    process.exit(2);
+  }
+
   const filePath = join(cloneDir, filename);
 
   let content: string;
@@ -420,6 +445,20 @@ async function cmdList(env: CliEnv): Promise<void> {
 export async function main(argv: string[], env: CliEnv): Promise<void> {
   const args = argv.slice(2); // strip node + script path
   const cmd = args[0];
+
+  // ── Startup: validate KB_GLOBAL_PAGE env value ────────────────────────────
+  // The agent config already constrains KB_GLOBAL_PAGE (no slashes, no .md
+  // suffix) but the CLI re-validates defense-in-depth so a misconfigured env
+  // var fails fast with a clear message before any fs.* or git operation.
+  // We validate the effective value (env override or the hardcoded default
+  // 'KB-Global') so operators see an error regardless of which code path runs.
+  const effectiveGlobalPage = env['KB_GLOBAL_PAGE'] ?? 'KB-Global';
+  try {
+    validateKbPageName(effectiveGlobalPage);
+  } catch (err) {
+    process.stderr.write(`agentify-kb: ${(err as Error).message}\n`);
+    process.exit(2);
+  }
 
   if (cmd == null || cmd === '--help' || cmd === '-h') {
     process.stdout.write('Usage: agentify-kb <append <scope>|read <scope>|list>\n');
