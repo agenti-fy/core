@@ -166,3 +166,79 @@ describe('loadConfig — empty-string coercion for KB numeric fields', () => {
     expect(cfg.kbEntryMaxBytes).toBe(1024);
   });
 });
+
+describe('loadConfig — empty-string coercion for remaining numeric fields', () => {
+  it('falls back to schema default when REGISTER_RETRY_MS is empty string', () => {
+    const cfg = loadConfig({ ...BASE_ENV, REGISTER_RETRY_MS: '' });
+    expect(cfg.registerRetryMs).toBe(2000);
+  });
+
+  it('falls back to schema default when REGISTER_MAX_ATTEMPTS is empty string', () => {
+    const cfg = loadConfig({ ...BASE_ENV, REGISTER_MAX_ATTEMPTS: '' });
+    expect(cfg.registerMaxAttempts).toBe(60);
+  });
+
+  it('falls back to schema default when HEARTBEAT_INTERVAL_MS is empty string', () => {
+    const cfg = loadConfig({ ...BASE_ENV, HEARTBEAT_INTERVAL_MS: '' });
+    expect(cfg.heartbeatIntervalMs).toBe(15000);
+  });
+
+  it('falls back to schema default when COORDINATOR_TIMEOUT_MS is empty string', () => {
+    const cfg = loadConfig({ ...BASE_ENV, COORDINATOR_TIMEOUT_MS: '' });
+    expect(cfg.coordinatorTimeoutMs).toBe(15000);
+  });
+
+  it('falls back to schema default when JOB_HISTORY_CAPACITY is empty string', () => {
+    const cfg = loadConfig({ ...BASE_ENV, JOB_HISTORY_CAPACITY: '' });
+    expect(cfg.jobHistoryCapacity).toBe(500);
+  });
+
+  it('falls back to schema default when CLAUDE_MAX_TURNS is empty string', () => {
+    const cfg = loadConfig({ ...BASE_ENV, CLAUDE_MAX_TURNS: '' });
+    expect(cfg.claudeMaxTurns).toBe(500);
+  });
+
+  it('falls back to schema default when CLAUDE_COST_LIMIT_USD is empty string', () => {
+    const cfg = loadConfig({ ...BASE_ENV, CLAUDE_COST_LIMIT_USD: '' });
+    expect(cfg.claudeCostLimitUsd).toBe(5.0);
+  });
+
+  it('falls back to global CLAUDE_MAX_TURNS when CLAUDE_MAX_TURNS_PLAN is empty string', () => {
+    const cfg = loadConfig({ ...BASE_ENV, CLAUDE_MAX_TURNS_PLAN: '', CLAUDE_MAX_TURNS: '42' });
+    expect(cfg.claudeMaxTurnsPlan).toBe(42);
+  });
+
+  it('falls back to schema default when both CLAUDE_MAX_TURNS_PLAN and CLAUDE_MAX_TURNS are empty strings', () => {
+    const cfg = loadConfig({ ...BASE_ENV, CLAUDE_MAX_TURNS_PLAN: '', CLAUDE_MAX_TURNS: '' });
+    expect(cfg.claudeMaxTurnsPlan).toBe(100);
+  });
+});
+
+describe('loadConfig — claudeMaxTurns* precedence', () => {
+  it('per-method env var wins over global CLAUDE_MAX_TURNS', () => {
+    const cfg = loadConfig({
+      ...BASE_ENV,
+      CLAUDE_MAX_TURNS_PLAN: '77',
+      CLAUDE_MAX_TURNS: '99',
+    });
+    expect(cfg.claudeMaxTurnsPlan).toBe(77);
+  });
+
+  it('global CLAUDE_MAX_TURNS wins over schema default when per-method is unset', () => {
+    const cfg = loadConfig({ ...BASE_ENV, CLAUDE_MAX_TURNS: '42' });
+    expect(cfg.claudeMaxTurnsPlan).toBe(42);
+    expect(cfg.claudeMaxTurnsImplement).toBe(42);
+    expect(cfg.claudeMaxTurnsReview).toBe(42);
+    expect(cfg.claudeMaxTurnsAddressReview).toBe(42);
+    expect(cfg.claudeMaxTurnsMerge).toBe(42);
+  });
+
+  it('schema defaults apply when no CLAUDE_MAX_TURNS* vars are set', () => {
+    const cfg = loadConfig({ ...BASE_ENV });
+    expect(cfg.claudeMaxTurnsPlan).toBe(100);
+    expect(cfg.claudeMaxTurnsImplement).toBe(250);
+    expect(cfg.claudeMaxTurnsReview).toBe(60);
+    expect(cfg.claudeMaxTurnsAddressReview).toBe(200);
+    expect(cfg.claudeMaxTurnsMerge).toBe(50);
+  });
+});
