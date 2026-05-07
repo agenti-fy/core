@@ -27,7 +27,7 @@ A multi-agent software development system. Each **agent** is an HTTP service dri
 
 The system has no auth/authz on its own HTTP surface — deploy on a private network or behind a reverse proxy.
 
-See [CHANGELOG.md](./CHANGELOG.md) for release history.
+See [CHANGELOG.md](./CHANGELOG.md) for release history. Architectural decisions are recorded in `docs/adr/NNN-<slug>.md`. See [docs/adr/001-pem-at-rest-mitigation.md](docs/adr/001-pem-at-rest-mitigation.md) for an example.
 
 ## Contents
 
