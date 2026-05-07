@@ -108,6 +108,9 @@ services:
       STALE_JOB_TIMEOUT_S: ${STALE_JOB_TIMEOUT_S:-1800}
       STALE_JOB_SWEEP_S: ${STALE_JOB_SWEEP_S:-600}
 
+      # Result-payload size cap (bytes). Oversize results are recorded as task_error.
+      MAX_RESULT_JSON_BYTES: ${MAX_RESULT_JSON_BYTES:-262144}
+
       # Job-row GC retention.
       FAILED_DISPATCH_RETENTION_DAYS: ${FAILED_DISPATCH_RETENTION_DAYS:-7}
       COMPLETED_JOB_RETENTION_DAYS: ${COMPLETED_JOB_RETENTION_DAYS:-30}

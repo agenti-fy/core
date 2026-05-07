@@ -3,12 +3,14 @@ import type { JobRecord } from '@agentify/shared';
 import type { CoordinatorStore } from '../store.js';
 import type { AgentRpcClient, GetJobResult } from '../agent-client.js';
 import type { CoordinatorMetrics } from '../metrics.js';
+import type { Config } from '../config.js';
 
 export interface JobPollerDeps {
   store: CoordinatorStore;
   agentClient: AgentRpcClient;
   logger: Logger;
   metrics?: CoordinatorMetrics;
+  config: Pick<Config, 'maxResultJsonBytes'>;
 }
 
 /**
@@ -104,13 +106,39 @@ async function reconcileJob(
   }
 
   const result = job_result.result;
+
+  // NOTE: kb_writes[*].bytes is agent-reported and purely informational metadata.
+  // It is never consulted for any quota or control-flow decision here — the
+  // enforcement gate is the serialized-payload size check immediately below.
+  const serialized = JSON.stringify(result);
+  const serializedBytes = serialized.length;
+  if (serializedBytes > deps.config.maxResultJsonBytes) {
+    deps.logger.warn(
+      {
+        agent_id: agent.agent_id,
+        job_id: job.job_id,
+        serialized_bytes: serializedBytes,
+        cap: deps.config.maxResultJsonBytes,
+      },
+      'result_json exceeds MAX_RESULT_JSON_BYTES — artifacts dropped, outcome overridden to task_error',
+    );
+    const capMsg = `result_json exceeded MAX_RESULT_JSON_BYTES (${serializedBytes} > ${deps.config.maxResultJsonBytes}); artifacts dropped`;
+    result.artifacts = {};
+    result.outcome = 'task_error';
+    result.error = result.error
+      ? { ...result.error, message: `${result.error.message}; ${capMsg}` }
+      : { message: capMsg };
+    deps.metrics?.recordJobCompletion(result.method, 'task_error');
+  } else {
+    deps.metrics?.recordJobCompletion(result.method, result.outcome);
+  }
+
   const finalStatus = result.outcome === 'success' ? 'complete' : 'failed';
   deps.store.updateJobStatus(job.job_id, finalStatus, {
     completed_at: Date.now(),
     outcome: result.outcome,
     result_json: JSON.stringify(result),
   });
-  deps.metrics?.recordJobCompletion(result.method, result.outcome);
   deps.logger.info(
     {
       agent_id: agent.agent_id,

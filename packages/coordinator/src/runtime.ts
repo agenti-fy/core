@@ -226,6 +226,7 @@ export function startRuntime(deps: RuntimeDeps): RuntimeHandles {
           store: deps.store,
           agentClient: deps.agentClient,
           logger: deps.logger,
+          config: deps.config,
           ...(deps.metrics ? { metrics: deps.metrics } : {}),
         }),
       deps.config.jobCompletionPollSeconds * 1000,

@@ -61,6 +61,7 @@ The stale-sweeper (`packages/coordinator/src/poller/stale-sweeper.ts`) finds iss
 |----------|---------|---------|
 | `STALE_JOB_TIMEOUT_S` | `1800` (30 min) | Label age threshold for a stuck marker |
 | `STALE_JOB_SWEEP_S` | `600` (10 min) | How often the sweeper runs |
+| `MAX_RESULT_JSON_BYTES` | `262144` (256 KiB) | Hard cap on serialized `result_json`; oversize results are recorded as `task_error` with empty artifacts. Operators triaging a `task_error` with message `result_json exceeded MAX_RESULT_JSON_BYTES` should look here first. |
 
 **Per-persona scoped.** Each `(persona, method)` marker is swept independently. If conductor's review is stuck and skeptic's review is in-flight on the same PR, only conductor's marker is cleared.
 
