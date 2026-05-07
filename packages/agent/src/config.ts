@@ -208,7 +208,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     kbEnabled: env.KB_ENABLED,
     kbGlobalPage: env.KB_GLOBAL_PAGE || undefined,
     kbPagePrefix: env.KB_PAGE_PREFIX || undefined,
-    kbWriteRetryMax: env.KB_WRITE_RETRY_MAX,
-    kbEntryMaxBytes: env.KB_ENTRY_MAX_BYTES,
+    kbWriteRetryMax: env.KB_WRITE_RETRY_MAX || undefined,
+    kbEntryMaxBytes: env.KB_ENTRY_MAX_BYTES || undefined,
   });
 }
