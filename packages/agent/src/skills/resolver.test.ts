@@ -509,14 +509,14 @@ describe('default skill prompts — kb_clone_dir stable-template contract', () =
   const defaultsDir = join(testDir, 'defaults');
   const mdFiles = readdirSync(defaultsDir).filter((f: string) => f.endsWith('.md'));
 
-  // Allowed compositions are:
-  //   {{kb_clone_dir}}/{{kb_global_page}}
-  //   {{kb_clone_dir}}/{{kb_persona_page}}
-  // Standalone {{kb_clone_dir}} NOT followed by '/' is also allowed (guard / presence-check pattern).
+  // Three allowed forms:
+  //   1. {{kb_clone_dir}}/{{kb_global_page}}  — composition (global page)
+  //   2. {{kb_clone_dir}}/{{kb_persona_page}} — composition (persona page)
+  //   3. {{kb_clone_dir}} (not followed by /) — standalone guard / presence-check
   // Any other suffix — e.g. {{kb_clone_dir}}/wiki — embeds a per-job path into the stable
   // template section, collapsing the prompt-cache hit rate to ~0.
   // See SPEC.md §23.8 ("Skill integration") for the stable-template composition constraint.
-  const VIOLATION_RE = /\{\{kb_clone_dir\}\}\/(?!\{\{kb_(global|persona)_page\}\})/g;
+  const VIOLATION_RE = /\{\{kb_clone_dir\}\}\/(?!\{\{kb_(global|persona)_page\}\})/g; // negates forms 1 and 2; form 3 falls out from the `/` lookahead anchor
 
   it.each(mdFiles)(
     '%s does not violate the kb_clone_dir stable-template contract',
@@ -526,8 +526,10 @@ describe('default skill prompts — kb_clone_dir stable-template contract', () =
       const failureMessage =
         `${filename}: {{kb_clone_dir}}/ is followed by an unsupported suffix.\n` +
         `Offending substrings: ${matches.map((m) => JSON.stringify(m[0])).join(', ')}\n` +
-        `Allowed compositions: {{kb_clone_dir}}/{{kb_global_page}} or {{kb_clone_dir}}/{{kb_persona_page}}.\n` +
-        `Standalone {{kb_clone_dir}} (not followed by /) is also allowed (guard/presence-check pattern).\n` +
+        `Allowed forms (three):\n` +
+        `  1. {{kb_clone_dir}}/{{kb_global_page}}  — composition (global page)\n` +
+        `  2. {{kb_clone_dir}}/{{kb_persona_page}} — composition (persona page)\n` +
+        `  3. {{kb_clone_dir}} (not followed by /) — standalone guard / presence-check\n` +
         `See SPEC.md §23.8 ("Skill integration") for the stable-template composition constraint.`;
       expect(matches, failureMessage).toHaveLength(0);
     },
