@@ -92,6 +92,22 @@ describe('AgentMetrics', () => {
       expect(metrics.registry.getMetricsAsArray().map((m) => m.name)).toContain(
         'agentify_kb_reads_total',
       );
+      // Tightened assertion: the persona label must appear on the KB reads counter sample.
+      // Uses [^}]* to tolerate arbitrary label ordering (prom-client order is not stable).
+      expect(text).toMatch(/agentify_kb_reads_total\{[^}]*persona="skeptic"/);
+    });
+
+    it('agentify_kb_writes_total carries the persona default label after setPersona', async () => {
+      metrics.setPersona('skeptic');
+      metrics.recordKbWrite('global', 'success');
+      const text = await metrics.registry.metrics();
+      // Registry-membership guard: counter must exist in the registry.
+      expect(text).toContain('agentify_kb_writes_total');
+      expect(metrics.registry.getMetricsAsArray().map((m) => m.name)).toContain(
+        'agentify_kb_writes_total',
+      );
+      // Tightened assertion: the persona label must appear on the KB writes counter sample.
+      expect(text).toMatch(/agentify_kb_writes_total\{[^}]*persona="skeptic"/);
     });
   });
 });
