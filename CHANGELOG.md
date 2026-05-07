@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Drop the now-unreachable `.endsWith('.md')` refine on `KB_GLOBAL_PAGE` (#330). The strict allowlist regex landed in #328 already excludes `.`; invalid inputs still throw, just with the regex error message rather than the suffix-refine one.
 - **Tool scoping**: deny `Task`, `WebFetch`, `WebSearch` for all five methods; restrict `plan` and `review` to a read-only `Bash` allowlist (`gh *`, `git log/show/diff/rev-parse`, `ls`, `cat`). Closes #65.
 - `POST /reset` now hot-reloads `CLAUDE_MAX_TURNS_*` per-method turn caps (#93) and `CLAUDE_TIMEOUT_MS` (#103) without a process restart; static-at-boot settings (host, port, coordinator URL, agent public URL, heartbeat interval, credentials) still require a restart.
 - Skill-body template tokens `{{repo}}`, `{{target_id}}`, `{{agent_name}}`, and `{{persona}}` are no longer interpolated into the skill template. Their values now appear in a trailing **Task vars** block appended to `skillPrompt`; only `{{signature}}` is still substituted directly into the template. This makes the stable prefix byte-identical across jobs, enabling prompt-cache hits.
