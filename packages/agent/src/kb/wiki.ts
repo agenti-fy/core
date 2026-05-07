@@ -11,8 +11,10 @@
  *
  * Shared helpers:
  *   - `credentialHelperCommand` from worktree.ts: points the wiki bare clone's
- *     credential.helper at the same `.token` file written by WorktreeManager.
- *     WikiManager never writes the token file — it only reads via the helper.
+ *     credential.helper at the same `.token` file. WikiManager also writes the
+ *     token file itself via `tokenCache.ensureFile()` at the start of `_prepare`
+ *     (see below), making `prepare()` order-independent — no longer relies on
+ *     WorktreeManager having run first for the same repo. Tracked: #337.
  *   - `runGit` from worktree.ts: single git wrapper with auth-token scrubbing.
  *   - `gitIdentityFor` from worktree.ts: identical git user.name/email logic.
  *   - `FETCH_TTL_MS` from worktree.ts: shared fetch-debounce constant.
@@ -145,6 +147,16 @@ export class WikiManager {
     const helper = credentialHelperCommand(tokenFile);
 
     await mkdir(repoDir, { recursive: true });
+
+    // Defensive: WikiManager doesn't own the token file (WorktreeManager does),
+    // but if a caller invokes us before worktreeManager.prepare() for this repo,
+    // the credential helper would `cat` an empty/missing file and git auth would
+    // fail silently into our null-return path. Writing here is a no-op when
+    // WorktreeManager already wrote it (same content within the cache TTL).
+    // Tracked: #337.
+    if (this.tokenCache) {
+      await this.tokenCache.ensureFile(tokenFile);
+    }
 
     if (!(await pathExists(bareDir))) {
       this.logger.info({ repo, bareDir }, 'cloning wiki bare repo');
