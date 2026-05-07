@@ -54,6 +54,7 @@ export class InstallationTokenCache {
 
   /**
    * Atomically write the current token into `tokenFile` (mode 0600).
+   * Writes the token with mode `0600` so other users on the host cannot read it.
    * Uses a `.tmp` sibling + rename so readers never see a half-written file.
    * Safe to call repeatedly — last writer wins with identical (or freshly
    * refreshed) content.
