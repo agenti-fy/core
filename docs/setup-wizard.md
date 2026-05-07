@@ -93,12 +93,14 @@ For each App the wizard:
 1. Builds a [GitHub App Manifest](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest)
    and opens a local HTTP server on a random port for the OAuth callback.
 2. Opens a browser to the GitHub manifest form.
-   <!-- screenshot: github-create-app.png placeholder -->
+   <!-- screenshot: github-create-app.png placeholder
+        alt: GitHub "Create GitHub App from manifest" form, pre-filled with the wizard's manifest values for one persona -->
 3. **You click "Create GitHub App"** (the only manual step per App).
 4. GitHub redirects back; the wizard exchanges the code for `id`, `pem`,
    `client_id`, `client_secret`, and `webhook_secret`.
 5. An installation URL opens; **you install the App on the target repo**.
-   <!-- screenshot: github-install-app.png placeholder -->
+   <!-- screenshot: github-install-app.png placeholder
+        alt: GitHub App installation page on the "Only select repositories" choice, with the target repo selected -->
 6. The wizard polls `GET /app/installations` until the `installation_id`
    appears, then checkpoints it.
 
