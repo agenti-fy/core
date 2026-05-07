@@ -52,7 +52,7 @@ export const WIZARD_PERSONAS: readonly WizardPersona[] = Object.freeze(
 /**
  * Required GitHub App permissions for each persona App.
  *
- * Source: README.md §"GitHub App setup" (lines 182-187).
+ * Source: README.md §"GitHub App setup" → "Required permissions".
  * The manifest builder imports this directly so the README and manifest
  * are always in sync.
  */
@@ -61,6 +61,7 @@ export const APP_PERMISSIONS = Object.freeze({
   issues: 'write',
   pull_requests: 'write',
   metadata: 'read',
+  wiki: 'write',
 } as const);
 
 /**
