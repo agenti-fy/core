@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import pino from 'pino';
+import type * as ClaudeSdk from '@anthropic-ai/claude-agent-sdk';
 import type { SkillRunOptions } from './adapter.js';
 import { __test, LiveClaudeAdapter } from './live.js';
 import { loadConfig, resolveMaxTurns, applyHotReloadable } from '../config.js';
@@ -9,9 +10,7 @@ import type { Method } from '@agentify/shared';
 // Use vi.importActual inside the factory so SYSTEM_PROMPT_DYNAMIC_BOUNDARY
 // tracks the real SDK export — a rename or re-spell will surface here first.
 vi.mock('@anthropic-ai/claude-agent-sdk', async () => {
-  const actual = await vi.importActual<typeof import('@anthropic-ai/claude-agent-sdk')>(
-    '@anthropic-ai/claude-agent-sdk',
-  );
+  const actual = await vi.importActual<typeof ClaudeSdk>('@anthropic-ai/claude-agent-sdk');
   return {
     query: vi.fn(),
     SYSTEM_PROMPT_DYNAMIC_BOUNDARY: actual.SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
@@ -372,9 +371,7 @@ describe('resolveMaxTurns', () => {
 // ---------------------------------------------------------------------------
 
 vi.mock('@anthropic-ai/claude-agent-sdk', async () => {
-  const actual = await vi.importActual<typeof import('@anthropic-ai/claude-agent-sdk')>(
-    '@anthropic-ai/claude-agent-sdk',
-  );
+  const actual = await vi.importActual<typeof ClaudeSdk>('@anthropic-ai/claude-agent-sdk');
   const querySpy = vi.fn();
   return { query: querySpy, SYSTEM_PROMPT_DYNAMIC_BOUNDARY: actual.SYSTEM_PROMPT_DYNAMIC_BOUNDARY };
 });
