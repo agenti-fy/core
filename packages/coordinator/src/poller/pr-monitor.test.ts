@@ -159,7 +159,11 @@ describe('desiredRoutingLabels', () => {
     expect(labels).toEqual(['agent:conductor:review']);
   });
 
-  it('treats COMMENTED on current HEAD as still open (no verdict)', () => {
+  it('treats COMMENTED on current HEAD as approval-by-abstention (merge gate fires)', () => {
+    // A required-reviewer agent that runs and posts COMMENTED — typically
+    // an out-of-lane review (e.g. skeptic on docs-only) — counts as approval
+    // for the merge gate. Previously this deadlocked the PR forever because
+    // routing kept the reviewer 'open' and the merge label never appeared.
     const labels = desiredRoutingLabels(
       pr({
         authorPersona: 'tinkerer',
@@ -172,7 +176,7 @@ describe('desiredRoutingLabels', () => {
       }),
       config,
     ) ?? [];
-    expect(labels).toEqual(['agent:conductor:review']);
+    expect(labels).toEqual(['agent:conductor:merge']);
   });
 
   it('skips re-adding a reviewer label whose review-in-progress marker is set', () => {

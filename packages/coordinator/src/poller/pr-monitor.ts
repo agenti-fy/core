@@ -167,9 +167,17 @@ export function desiredRoutingLabels(
     if (!latest) return 'open';
     if (latest.state === 'APPROVED') return 'approved';
     if (latest.state === 'CHANGES_REQUESTED') return 'changes_requested';
-    // COMMENTED on current HEAD — reviewer engaged but hasn't given a
-    // verdict. Treat as still-open so the merge gate doesn't fire.
-    return 'open';
+    // COMMENTED on current HEAD — the reviewer is an agent (only agent
+    // personas appear in `reviewers`), they ran, looked, and chose not to
+    // block. Treat as approval-by-abstention so the merge gate fires.
+    // Earlier behavior treated this as 'open', which deadlocked any PR
+    // where a required reviewer produced an out-of-lane COMMENT (e.g.
+    // skeptic on a docs-only PR — review.md previously instructed
+    // "stay in your lane → comment briefly").
+    // The corresponding skill prompt now requires APPROVE for out-of-lane,
+    // but this behavior also unblocks PRs that already have a terminal
+    // COMMENTED review.
+    return 'approved';
   };
 
   const states = new Map<string, ReviewerState>();
