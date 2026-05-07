@@ -322,8 +322,7 @@ describe('run — verify', () => {
     });
     await run(args('verify', { envOut: '/custom/.env' }), deps);
     expect(capturedDeps).not.toBeNull();
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    expect((capturedDeps! as VerifyDeps).envPath).toBe('/custom/.env');
+    expect(capturedDeps!.envPath).toBe('/custom/.env');
   });
 });
 
