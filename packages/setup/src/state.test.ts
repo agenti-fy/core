@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { PassThrough } from 'node:stream';
+import { type IoStreams } from './prompts.js';
 import {
   WizardStateSchema,
   PersonaCredsSchema,
@@ -421,6 +423,59 @@ const V1_FIXTURE = {
   personas: {},
 };
 
+/**
+ * A comprehensive v1 state fixture (plaintext PEMs, version: 1) with both
+ * orchestrator and conductor personas, as well as coordinator credentials.
+ *
+ * Inlined as a literal so the test clearly documents what v1 looked like and
+ * is robust to future v2 schema bumps (does not derive from MINIMAL_STATE /
+ * FULL_STATE, which are v2 shapes).
+ */
+const V1_FULL_FIXTURE = {
+  version: 1,
+  prefix: 'mig-test',
+  repo: { owner: 'a', name: 'b' },
+  ownerType: 'personal',
+  coordinator: {
+    appId: 100,
+    slug: 'mig-test-coordinator',
+    name: 'Mig Test Coordinator',
+    htmlUrl: 'https://github.com/apps/mig-test-coordinator',
+    pem: '-----BEGIN RSA PRIVATE KEY-----\nMIIEowCoordinator...\n-----END RSA PRIVATE KEY-----\n',
+    clientId: 'Iv1.coord001',
+    clientSecret: 'coord-secret-v1',
+    webhookSecret: 'coord-webhook-v1',
+    installationId: 11111,
+    githubUser: 'mig-test-coordinator[bot]',
+  },
+  personas: {
+    orchestrator: {
+      appId: 200,
+      slug: 'mig-test-orchestrator',
+      name: 'Mig Test Orchestrator',
+      htmlUrl: 'https://github.com/apps/mig-test-orchestrator',
+      pem: '-----BEGIN RSA PRIVATE KEY-----\nMIIEowOrchestrator...\n-----END RSA PRIVATE KEY-----\n',
+      clientId: 'Iv1.orch001',
+      clientSecret: 'orch-secret-v1',
+      webhookSecret: 'orch-webhook-v1',
+      installationId: 22222,
+      githubUser: 'mig-test-orchestrator[bot]',
+    },
+    conductor: {
+      appId: 300,
+      slug: 'mig-test-conductor',
+      name: 'Mig Test Conductor',
+      htmlUrl: 'https://github.com/apps/mig-test-conductor',
+      pem: '-----BEGIN RSA PRIVATE KEY-----\nMIIEowConductor...\n-----END RSA PRIVATE KEY-----\n',
+      clientId: 'Iv1.cond001',
+      clientSecret: 'cond-secret-v1',
+      webhookSecret: 'cond-webhook-v1',
+      installationId: 33333,
+      githubUser: 'mig-test-conductor[bot]',
+    },
+  },
+};
+
 describe('loadState — v1 → v2 migration', () => {
   let tmpDir: string;
 
@@ -474,6 +529,134 @@ describe('loadState — v1 → v2 migration', () => {
     // The original v1 file must be untouched.
     const stillV1 = JSON.parse(await fs.readFile(filePath, 'utf8')) as Record<string, unknown>;
     expect(stillV1['version']).toBe(1);
+  });
+
+  // ── Full round-trip tests using the comprehensive V1_FULL_FIXTURE ──────────
+
+  it('migrates a v1 file in place and returns plaintext state', async () => {
+    // Write a realistic v1 fixture with coordinator + two personas — directly
+    // (not through saveState) so we get a genuine v1 file on disk.
+    const filePath = path.join(tmpDir, 'setup-mig-test.json');
+    await fs.writeFile(filePath, JSON.stringify(V1_FULL_FIXTURE), 'utf8');
+
+    const loaded = await loadState('mig-test', {
+      dir: tmpDir,
+      passphrase: 'migration-test-12c',
+    });
+
+    // ── In-memory return: version 2, plaintext credentials ─────────────────
+    expect(loaded).not.toBeNull();
+    expect(loaded?.version).toBe(2);
+
+    // Coordinator — plaintext in memory.
+    expect(typeof loaded?.coordinator?.pem).toBe('string');
+    expect(loaded?.coordinator?.pem).toContain('-----BEGIN');
+    expect(loaded?.coordinator?.clientSecret).toBe('coord-secret-v1');
+    expect(loaded?.coordinator?.webhookSecret).toBe('coord-webhook-v1');
+
+    // Orchestrator persona — plaintext in memory.
+    expect(typeof loaded?.personas?.orchestrator?.pem).toBe('string');
+    expect(loaded?.personas?.orchestrator?.pem).toContain('-----BEGIN');
+    expect(loaded?.personas?.orchestrator?.clientSecret).toBe('orch-secret-v1');
+    expect(loaded?.personas?.orchestrator?.webhookSecret).toBe('orch-webhook-v1');
+
+    // Conductor persona — plaintext in memory.
+    expect(typeof loaded?.personas?.conductor?.pem).toBe('string');
+    expect(loaded?.personas?.conductor?.pem).toContain('-----BEGIN');
+    expect(loaded?.personas?.conductor?.clientSecret).toBe('cond-secret-v1');
+    expect(loaded?.personas?.conductor?.webhookSecret).toBe('cond-webhook-v1');
+
+    // ── On-disk file: version 2, all sensitive fields encrypted ───────────
+    const diskJson = await fs.readFile(filePath, 'utf8');
+    const onDisk = JSON.parse(diskJson) as Record<string, unknown>;
+
+    expect(onDisk['version']).toBe(2);
+
+    // Coordinator on-disk: pem, clientSecret, webhookSecret are EncryptedValue.
+    const coord = onDisk['coordinator'] as Record<string, unknown>;
+    expect(EncryptedValueSchema.safeParse(coord['pem']).success).toBe(true);
+    expect(EncryptedValueSchema.safeParse(coord['clientSecret']).success).toBe(true);
+    expect(EncryptedValueSchema.safeParse(coord['webhookSecret']).success).toBe(true);
+
+    // Personas on-disk: pem, clientSecret, webhookSecret are EncryptedValue.
+    const personas = onDisk['personas'] as Record<string, Record<string, unknown>>;
+
+    expect(EncryptedValueSchema.safeParse(personas['orchestrator']?.['pem']).success).toBe(true);
+    expect(EncryptedValueSchema.safeParse(personas['orchestrator']?.['clientSecret']).success).toBe(true);
+    expect(EncryptedValueSchema.safeParse(personas['orchestrator']?.['webhookSecret']).success).toBe(true);
+
+    expect(EncryptedValueSchema.safeParse(personas['conductor']?.['pem']).success).toBe(true);
+    expect(EncryptedValueSchema.safeParse(personas['conductor']?.['clientSecret']).success).toBe(true);
+    expect(EncryptedValueSchema.safeParse(personas['conductor']?.['webhookSecret']).success).toBe(true);
+
+    // No plaintext PEM bytes present anywhere in the serialised file.
+    expect(diskJson).not.toContain('-----BEGIN');
+
+    // ── Round-trip: load the migrated (v2) file a second time ─────────────
+    // The second load must decrypt and return the same plaintext credentials.
+    const reloaded = await loadState('mig-test', {
+      dir: tmpDir,
+      passphrase: 'migration-test-12c',
+    });
+    expect(reloaded).not.toBeNull();
+    expect(reloaded?.version).toBe(2);
+    expect(reloaded?.coordinator?.pem).toBe(loaded?.coordinator?.pem);
+    expect(reloaded?.coordinator?.clientSecret).toBe('coord-secret-v1');
+    expect(reloaded?.coordinator?.webhookSecret).toBe('coord-webhook-v1');
+    expect(reloaded?.personas?.orchestrator?.pem).toBe(loaded?.personas?.orchestrator?.pem);
+    expect(reloaded?.personas?.orchestrator?.clientSecret).toBe('orch-secret-v1');
+    expect(reloaded?.personas?.conductor?.pem).toBe(loaded?.personas?.conductor?.pem);
+    expect(reloaded?.personas?.conductor?.clientSecret).toBe('cond-secret-v1');
+  });
+
+  it('refuses to migrate a v1 file without a passphrase', async () => {
+    // Write the comprehensive v1 fixture to disk directly (not via saveState).
+    const filePath = path.join(tmpDir, 'setup-mig-test.json');
+    const originalContent = JSON.stringify(V1_FULL_FIXTURE);
+    await fs.writeFile(filePath, originalContent, 'utf8');
+
+    // loadState without a passphrase must throw a clear, informative error.
+    await expect(loadState('mig-test', { dir: tmpDir })).rejects.toThrow(
+      /version 1.*passphrase|AGENTIFY_SETUP_PASSPHRASE/i,
+    );
+
+    // The original v1 file must be completely unchanged — no partial migration.
+    const afterAttempt = await fs.readFile(filePath, 'utf8');
+    expect(JSON.parse(afterAttempt)['version']).toBe(1);
+    expect(afterAttempt).toContain('-----BEGIN'); // plaintext PEMs still there
+  });
+
+  it('emits a one-time migration notice on first load and not on subsequent loads', async () => {
+    /** Build a PassThrough-based IoStreams pair that captures stdout. */
+    function makeTestIo(): IoStreams & { output: () => string } {
+      const stdin = new PassThrough();
+      const stdout = new PassThrough();
+      const chunks: Buffer[] = [];
+      stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+      return { stdin, stdout, output: () => Buffer.concat(chunks).toString('utf8') };
+    }
+
+    // Write the v1 fixture.
+    const filePath = path.join(tmpDir, 'setup-mig-test.json');
+    await fs.writeFile(filePath, JSON.stringify(V1_FULL_FIXTURE), 'utf8');
+
+    // First load — must emit the migration notice once.
+    const io1 = makeTestIo();
+    await loadState('mig-test', {
+      dir: tmpDir,
+      passphrase: 'migration-test-12c',
+      io: io1,
+    });
+    expect(io1.output()).toContain('Migrated state file from v1 to v2');
+
+    // Second load — the file is already v2; migration notice must NOT be repeated.
+    const io2 = makeTestIo();
+    await loadState('mig-test', {
+      dir: tmpDir,
+      passphrase: 'migration-test-12c',
+      io: io2,
+    });
+    expect(io2.output()).not.toContain('Migrated state file from v1 to v2');
   });
 });
 
