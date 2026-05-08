@@ -139,6 +139,19 @@ jobs:
           # uses the OIDC token from `id-token: write`.
           registry-url: 'https://registry.npmjs.org'
 
+      # npm trusted publishing requires npm CLI >= 11.5.1. Node 22 LTS bundles
+      # npm 10.9.x, which can sign provenance via OIDC (you'll see the
+      # "Signed provenance statement" notice in the publish log) but does NOT
+      # know how to exchange the OIDC token for a registry publish token.
+      # Without that exchange, the publish PUT goes out unauthenticated and
+      # the registry returns a `404 - Not Found` rather than an obvious 401.
+      # Upgrading globally here guarantees pnpm's bundled-npm shellout uses
+      # the trusted-publishing-aware version.
+      - name: Upgrade npm CLI to >= 11.5.1 for trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
+
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
 

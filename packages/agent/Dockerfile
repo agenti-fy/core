@@ -11,15 +11,15 @@ COPY packages/agent/package.json packages/agent/tsconfig.json packages/agent/
 
 RUN pnpm fetch && \
     pnpm install --frozen-lockfile \
-      --filter @agentify/shared... \
-      --filter @agentify/agent...
+      --filter @agenti-fy/shared... \
+      --filter @agenti-fy/agent...
 
 COPY packages/shared/src packages/shared/src
 COPY packages/agent/src packages/agent/src
 
-RUN pnpm --filter @agentify/shared build && \
-    pnpm --filter @agentify/agent build && \
-    pnpm deploy --filter @agentify/agent --legacy /out
+RUN pnpm --filter @agenti-fy/shared build && \
+    pnpm --filter @agenti-fy/agent build && \
+    pnpm deploy --filter @agenti-fy/agent --legacy /out
 
 # ---------------------------------------------------------------------------
 

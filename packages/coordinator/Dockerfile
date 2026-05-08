@@ -12,15 +12,15 @@ COPY packages/coordinator/package.json packages/coordinator/tsconfig.json packag
 
 RUN pnpm fetch && \
     pnpm install --frozen-lockfile \
-      --filter @agentify/shared... \
-      --filter @agentify/coordinator...
+      --filter @agenti-fy/shared... \
+      --filter @agenti-fy/coordinator...
 
 COPY packages/shared/src packages/shared/src
 COPY packages/coordinator/src packages/coordinator/src
 
-RUN pnpm --filter @agentify/shared build && \
-    pnpm --filter @agentify/coordinator build && \
-    pnpm deploy --filter @agentify/coordinator --legacy /out
+RUN pnpm --filter @agenti-fy/shared build && \
+    pnpm --filter @agenti-fy/coordinator build && \
+    pnpm deploy --filter @agenti-fy/coordinator --legacy /out
 
 # ---------------------------------------------------------------------------
 
