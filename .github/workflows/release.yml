@@ -145,12 +145,25 @@ jobs:
       # know how to exchange the OIDC token for a registry publish token.
       # Without that exchange, the publish PUT goes out unauthenticated and
       # the registry returns a `404 - Not Found` rather than an obvious 401.
-      # Upgrading globally here guarantees pnpm's bundled-npm shellout uses
-      # the trusted-publishing-aware version.
-      - name: Upgrade npm CLI to >= 11.5.1 for trusted publishing
+      #
+      # `npm install -g npm@latest` is the documented self-upgrade command
+      # but has a long-standing bug where the in-flight upgrade unlinks
+      # internal modules (promise-retry, etc.) before the replacement is in
+      # place, leaving the next `npm` invocation with `Cannot find module`
+      # crashes. Installing to a dedicated prefix avoids the self-modification
+      # race entirely — the original `npm` binary is untouched, and we
+      # prepend the new prefix to `PATH` so subsequent `pnpm publish` calls
+      # (which shell out to `npm` for the actual publish PUT) pick up
+      # npm >= 11.5.1.
+      - name: Install npm >= 11.5.1 into a dedicated prefix
         run: |
-          npm install -g npm@latest
-          npm --version
+          NPM_PREFIX="$HOME/.npm-global"
+          mkdir -p "$NPM_PREFIX"
+          npm install --prefix="$NPM_PREFIX" npm@latest
+          echo "$NPM_PREFIX/bin" >> "$GITHUB_PATH"
+          # Verify with the explicit path; the PATH update only takes effect
+          # in the next step.
+          "$NPM_PREFIX/bin/npm" --version
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
