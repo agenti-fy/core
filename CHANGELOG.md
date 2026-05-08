@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-05-08
+
+### Fixed
+
+- **`.dockerignore` was excluding `souls/`, which broke the agent Docker build under v0.3.4.** The new `COPY souls /app/souls/` line in `packages/agent/Dockerfile` (added in 0.3.4 to bake default soul files into the image) failed with "Attempting to Copy file 'souls' that is excluded by .dockerignore (line 58)". Removed the `souls/` exclusion — soul files are small YAML configs with no secrets, safe to ride in the build context. The coordinator Dockerfile doesn't `COPY souls`, so they don't end up in that image. Inline comment on the (now-removed) line explains the constraint for future readers.
+
 ## [0.3.4] - 2026-05-08
 
 ### Fixed

@@ -8,7 +8,10 @@ node_modules
 *.log
 data/
 workspaces/
-souls/
+# souls/ is intentionally NOT excluded — packages/agent/Dockerfile copies it
+# into the runtime image at /app/souls/ so the wizard-generated compose can
+# point each persona's SOUL_PATH at a baked-in default. The coordinator
+# Dockerfile doesn't COPY souls, so they don't end up in that image.
 docker-compose.yml
 README.md
 SPEC.md
