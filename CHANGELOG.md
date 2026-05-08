@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Docker images are now multi-arch (`linux/amd64` + `linux/arm64`).** The release workflow's Docker job is now an arch × package matrix on native runners (`ubuntu-latest` for amd64, `ubuntu-24.04-arm` for arm64) — no QEMU emulation, build times stay reasonable. Each arch pushes an arch-suffixed tag like `coordinator:0.3.3-amd64`; a follow-up `docker-merge` job uses `docker buildx imagetools create` to assemble multi-arch manifests at the canonical tags (`coordinator:0.3.3`, `coordinator:latest`). Operators on Apple Silicon and arm64 servers (Graviton, Ampere, Raspberry Pi 5) can now `docker pull` the same canonical tag and get the right native image automatically — no `--platform=linux/amd64` workaround, no x86 emulation tax. Pattern lifted from [allinbits/ibc-v2-ts-relayer](https://github.com/allinbits/ibc-v2-ts-relayer/blob/main/.github/workflows/docker.yml).
+
 ## [0.3.2] - 2026-05-08
 
 ### Fixed
