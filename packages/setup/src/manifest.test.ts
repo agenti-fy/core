@@ -84,17 +84,22 @@ describe('buildManifest — permissions', () => {
     expect(manifest.default_permissions).toStrictEqual(APP_PERMISSIONS);
   });
 
-  it('default_permissions includes wiki:write (required for per-repo KB)', () => {
-    // README §"GitHub App setup" lists Wiki as required — not optional — because
-    // every persona App needs wiki write to push KB page updates.  This assertion
-    // is an explicit, README-anchored lock so the permission cannot be silently
-    // dropped from APP_PERMISSIONS without a test failure.
+  it('default_permissions does NOT include `wiki` — it is not a valid GitHub App permission key', () => {
+    // PR #437 added `wiki: write` thinking the per-repo KB pushes needed an
+    // explicit permission. They don't — wiki access is covered by
+    // `contents: write` (wikis are git repos under the same content-access
+    // umbrella as the main repo). GitHub's manifest validator rejects the
+    // entire `default_permissions` object when an unknown resource appears
+    // in it, with the cryptic error "Default permission records resource is
+    // not included in the list". This regression test locks the fix in place
+    // — re-adding `wiki:` to APP_PERMISSIONS will fail loudly here rather
+    // than silently breaking every operator's setup-wizard run.
     const manifest = buildManifest({
       prefix: 'test',
       persona: 'theorist',
       callbackUrl: 'http://localhost:3000/callback',
     });
-    expect(manifest.default_permissions.wiki).toBe('write');
+    expect(manifest.default_permissions).not.toHaveProperty('wiki');
   });
 
   it('default_events is an empty array', () => {

@@ -60,9 +60,12 @@ insight, and which persona recorded it.
 
 ## Enabling KB on a new repo
 
-1. **Confirm wiki write permission.** The GitHub App installation must have
-   **Contents: Read & write** on the wiki (which is a separate git
-   repository at `https://github.com/<owner>/<repo>.wiki.git`). Verify in
+1. **Confirm wiki access.** The GitHub App installation needs
+   **Contents: Read & write** — wiki access flows through the same
+   `contents` permission as the main repo (the wiki is a separate git
+   repository at `https://github.com/<owner>/<repo>.wiki.git` but is
+   covered by the same content-access scope). There is no separate
+   `wiki` permission key in the GitHub App API. Verify the install at
    _Settings → GitHub Apps → your installation → Repository permissions_.
 
 2. **Initialize the wiki via the GitHub UI.** GitHub wikis are lazily
@@ -170,8 +173,9 @@ up to `KB_WRITE_RETRY_MAX` attempts (default 3) in total.
 write only; the underlying skill job continues unaffected.
 
 **If the failure persists after retries:** The installation token may lack
-wiki write permission. Check the GitHub App permission settings (see step 1
-of [Enabling KB on a new repo](#enabling-kb-on-a-new-repo)). After fixing
+`Contents: Read & write` (which is what wiki pushes flow through). Check the
+GitHub App permission settings (see step 1 of
+[Enabling KB on a new repo](#enabling-kb-on-a-new-repo)). After fixing
 permissions, re-trigger the job.
 
 ---

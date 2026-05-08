@@ -57,12 +57,18 @@ describe('APP_PERMISSIONS', () => {
       issues: 'write',
       pull_requests: 'write',
       metadata: 'read',
-      wiki: 'write',
     });
   });
 
-  it('has exactly the five documented permission keys', () => {
-    expect(Object.keys(APP_PERMISSIONS)).toHaveLength(5);
+  it('has exactly the four documented permission keys', () => {
+    expect(Object.keys(APP_PERMISSIONS)).toHaveLength(4);
+  });
+
+  it('does NOT include `wiki` — not a valid GitHub App permission key', () => {
+    // GitHub's manifest API rejects unknown resources with
+    // "Default permission records resource is not included in the list".
+    // KB wiki pushes work via `contents: write`. See personas.ts comment.
+    expect(APP_PERMISSIONS).not.toHaveProperty('wiki');
   });
 
   it('is frozen', () => {

@@ -55,13 +55,21 @@ export const WIZARD_PERSONAS: readonly WizardPersona[] = Object.freeze(
  * Source: README.md §"GitHub App setup" → "Required permissions".
  * The manifest builder imports this directly so the README and manifest
  * are always in sync.
+ *
+ * Wiki access for KB pushes is covered by `contents: write` — wikis are
+ * git repos (`<repo>.wiki.git`) that fall under the same content-access
+ * umbrella as the main repo. There is NO separate `wiki` permission key
+ * accepted by the GitHub App Manifest API; an earlier attempt to add one
+ * (PR #437) caused the manifest to fail validation with
+ * "Default permission records resource is not included in the list" —
+ * GitHub's rejection of an unknown resource name. KB push smoke-tested
+ * successfully with just `contents: write` against pre-wizard Apps.
  */
 export const APP_PERMISSIONS = Object.freeze({
   contents: 'write',
   issues: 'write',
   pull_requests: 'write',
   metadata: 'read',
-  wiki: 'write',
 } as const);
 
 /**

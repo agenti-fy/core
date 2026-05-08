@@ -6,21 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.2.2] - 2026-05-08
+## [0.3.0] - 2026-05-08
 
-### Fixed
+First public release. Ships as four artifact streams from a single `v0.3.0` tag push (see `docs/RELEASE.md`):
 
-- Fixed publishing workflow on github
-
-## [0.2.0] - 2026-05-08
-
-First public release. Ships as four artifact streams from a single `v0.2.0` tag push (see `docs/RELEASE.md`):
-
-- Docker images on GHCR: `ghcr.io/agenti-fy/coordinator:0.2.0`, `ghcr.io/agenti-fy/agent:0.2.0` (also `:latest`).
+- Docker images on GHCR: `ghcr.io/agenti-fy/coordinator:0.3.0`, `ghcr.io/agenti-fy/agent:0.3.0` (also `:latest`).
 - npm packages with provenance attestations: `@agenti-fy/setup` (interactive setup wizard), `@agenti-fy/tui` (fleet monitoring TUI), `@agenti-fy/shared` (internal types and schemas; transitive dep of the other two). Published via [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) — no long-lived `NPM_TOKEN` secret; the GitHub Actions runner mints short-lived OIDC tokens scoped to this repo + workflow.
 - GitHub release with auto-generated notes and artifact pointers.
 
 Operator install path: `npx @agenti-fy/setup@latest init` to bootstrap, then `docker compose up -d`, then `npx @agenti-fy/tui@latest` to monitor.
+
+> **Note on version numbering.** No `0.1.x` or `0.2.x` artifact ever reached operators: the `v0.2.0` tag push hit a series of release-infrastructure bugs (Dockerfile scope refs, npm CLI < 11.5.1 with no NPM_TOKEN under trusted publishing, an invalid `wiki:` permission in the App manifest) that we shook out across `0.2.0`–`0.2.2` without a successful publish. `0.3.0` is the first cut that actually lands.
 
 ### Added
 
@@ -54,7 +50,8 @@ Operator install path: `npx @agenti-fy/setup@latest init` to bootstrap, then `do
 
 ### Fixed
 
-- setup: `APP_PERMISSIONS` now includes `wiki: write` so wizard-created Apps can push KB pages out of the box (#437).
+- **setup wizard**: removed `wiki: write` from `APP_PERMISSIONS`. GitHub's manifest API rejects unknown permission resources with the cryptic error _"Default permission records resource is not included in the list"_, breaking the App-creation step for every operator running the wizard. There is no `wiki` permission key in the GitHub App API; KB wiki pushes flow through `contents: write` (wikis are git repos at `<owner>/<repo>.wiki.git` covered by the same content-access scope). README §"GitHub App setup" and `docs/knowledge-base.md` updated to match. Reverts the misguided #437 change.
+- Publishing workflow: Dockerfiles' pnpm filters were missed by the previous `@agentify/` → `@agenti-fy/` rename pass (extension-less files). Renamed both `packages/{agent,coordinator}/Dockerfile`. Also pinned npm CLI ≥ 11.5.1 in the publish job (Node 22 LTS bundles npm 10.9.x, which can't exchange OIDC tokens for npm publish auth — that's why the first `v0.2.0` cut returned a misleading 404 from the registry). The new install-to-prefix pattern (`npm install -g --prefix=$HOME/.npm-global npm@latest`) avoids the self-modification race that breaks `npm install -g npm@latest`.
 - `pnpm typecheck` succeeds on a clean checkout without a prior `pnpm build` (#192): switched from `tsc -p tsconfig.json --noEmit` (per-package) / `pnpm -r typecheck` (root) to `tsc -b` (project-references build mode), which resolves the reference graph in dependency order. `--noEmit` was dropped because TypeScript propagates it to referenced `composite` projects, triggering TS6310.
 - **TUI**: jobs cursor `›` indicator no longer disappears when `recentJobs` shrinks under the cursor (#160).
 - **TUI**: agents cursor `›` indicator no longer disappears when the agents list shrinks under the cursor between polls; `R` reset now targets the visually highlighted row rather than silently no-op'ing on a stale index (#174, closes #173).

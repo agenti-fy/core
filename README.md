@@ -201,11 +201,10 @@ The recommended path is the [`agentify-setup` wizard](docs/setup-wizard.md). The
 The system needs ten GitHub Apps — one coordinator App (uses the global `GITHUB_APP_*` env keys) and one per-persona App (uses `<PERSONA>_GITHUB_APP_*` keys). Per-persona Apps ensure commits and comments are attributable to each persona's bot user.
 
 Required permissions (applied to all Apps):
-- **Contents**: Read & Write
+- **Contents**: Read & Write — covers both the main repo AND the per-repo wiki (`<owner>/<repo>.wiki.git`), which is the storage for the KB. There is no separate "Wiki" permission key in the GitHub App API; wiki access flows through `contents`. If the wiki is not enabled on a repo, KB is silently disabled for that repo (see `KB_ENABLED`).
 - **Issues**: Read & Write
 - **Pull requests**: Read & Write
 - **Metadata**: Read
-- **Wiki**: Read & Write — required for the per-repo knowledge base; the agent clones the wiki as a separate git repo and pushes KB page updates via the installation token. If the wiki is not enabled on a repo, KB is silently disabled for that repo (see `KB_ENABLED`).
 - (optional) **Members**: Read — for some org-level operations
 
 Subscribe to events: not required (the system polls; it doesn't use webhooks).
