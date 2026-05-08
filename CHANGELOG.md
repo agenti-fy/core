@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-08
+
+### Added
+
+- **Setup wizard now generates a standalone `docker-compose.yml`** alongside the `.env`, plus the nine `souls/<persona>.md` files needed to bring the fleet up against the GHCR-published images. An operator who installed via `npx @agenti-fy/setup init` no longer needs to clone the source repo to run `docker compose up` — the wizard's output is a complete deploy bundle. The compose file references `ghcr.io/agenti-fy/{coordinator,agent}:<tag>` (no `build:` stanzas), pinning both images to the wizard's own version by default so the coordinator + agent versions stay locked together with the wizard.
+- `--image-tag <tag>` flag for the setup wizard. Overrides the default tag (the wizard's own version) used in the generated `docker-compose.yml`. Pass `latest` to track tip, or an older version to pin earlier.
+- `--no-compose` flag for the setup wizard. Skips generating `docker-compose.yml` + `souls/` for operators who only want the `.env`.
+- `--compose-out <path>` flag for the setup wizard. Overrides the default `docker-compose.yml` output path (default: `<dirname-of-envPath>/docker-compose.yml`). The `souls/` directory is always written next to the compose file, regardless of this flag.
+
+### Changed
+
+- The setup wizard's "Next steps" banner now says `docker compose up -d` (no `--build`) by default, since the generated compose pulls published images. With `--no-compose`, the banner falls back to `docker compose up -d --build` matching the source-clone path.
+- **Documentation: nine GitHub Apps, not ten.** README, `docs/setup-wizard.md`, the wizard's `--help` output and `cli.ts` JSDoc, and the `[0.3.0]` CHANGELOG entry all previously claimed the wizard creates "ten Apps (one coordinator + nine per-persona)." It actually creates nine — one per built-in persona. The orchestrator persona's App is aliased into the coordinator's `GITHUB_APP_*` env block by the wizard (`packages/setup/src/driver/apps.ts:339`), so the coordinator's read-only polling rides on the orchestrator's installation. No behavior change, just bringing the docs in line with the code.
+
+### Fixed
+
+- **setup wizard**: tolerate the GitHub propagation lag right after manifest exchange. `awaitInstallation` now treats `401 "Integration must generate a public key"` as transient and continues polling rather than aborting. The just-issued PEM is the correct key; GitHub's auth side just hasn't seen it yet (typically a few seconds). The existing deadline still bounds the wait, so genuine misconfigurations surface as `InstallationTimeoutError`. Other 401s (wrong PEM, revoked App, JWT decode failures) still propagate immediately. Regression-tested in `packages/setup/src/install.test.ts`.
+
 ## [0.3.0] - 2026-05-08
 
 First public release. Ships as four artifact streams from a single `v0.3.0` tag push (see `docs/RELEASE.md`):
@@ -20,7 +38,7 @@ Operator install path: `npx @agenti-fy/setup@latest init` to bootstrap, then `do
 
 ### Added
 
-- **`@agenti-fy/setup` interactive wizard** (`pnpm --filter @agenti-fy/setup start init`) — automates ten-App GitHub registration (one coordinator + nine per-persona) via the GitHub App Manifest flow, installs each App on the target repo, collects Anthropic credentials, and writes a ready-to-use `.env`. Replaces the manual click-through described in `README.md § GitHub App setup`. See `docs/setup-wizard.md` for the full operator walkthrough. (#414)
+- **`@agenti-fy/setup` interactive wizard** (`pnpm --filter @agenti-fy/setup start init`) — automates nine-App GitHub registration (one per built-in persona) via the GitHub App Manifest flow, installs each App on the target repo, collects Anthropic credentials, and writes a ready-to-use `.env`. The orchestrator's App is aliased into the coordinator's `GITHUB_APP_*` env block — the coordinator's read-only polling rides on the orchestrator's installation, so no separate coordinator App is needed. Replaces the manual click-through described in `README.md § GitHub App setup`. See `docs/setup-wizard.md` for the full operator walkthrough. (#414)
 - **Knowledge base** — per-repo, wiki-backed durable memory available to every persona on every skill run; pages are read at job start and optionally appended to at end via the bundled `agentify-kb` CLI. See `docs/knowledge-base.md` and SPEC.md §23. (#226)
 - `KB_ENABLED` (default `true`), `KB_GLOBAL_PAGE` (default `KB-Global`), `KB_PAGE_PREFIX` (default `KB-`), `KB_WRITE_RETRY_MAX` (default `3`), `KB_ENTRY_MAX_BYTES` (default `1024`): five KB config vars first landed in #254 (parent plan #226) are now surfaced in the operator-facing docs. The bool uses `${KB_ENABLED:-true}` (colon-dash) in compose so an unset env resolves to `true`, not empty-string `false`. Documented in `.env.example`, `README.md`, `docker-compose.yml`, and `CHANGELOG.md`. Closes #327.
 - `MAX_RESULT_JSON_BYTES` (default `262144`, 256 KiB): hard cap on the serialized job result persisted to `jobs.result_json` (#288). Jobs whose result exceeds the cap are recorded as `task_error` with `artifacts: {}` to keep the row valid JSON for downstream consumers. Documented in `.env.example`, `README.md`, `docker-compose.yml`, `docs/operations.md`, and `packages/coordinator/README.md`.

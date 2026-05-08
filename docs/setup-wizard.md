@@ -1,9 +1,12 @@
 # Setup wizard
 
 Interactive operator walkthrough for the `agentify-setup` wizard. The wizard
-creates ten GitHub Apps (one coordinator + nine per-persona), installs each on
-your target repository, collects your Anthropic credentials, and writes a
-ready-to-use `.env` file.
+creates nine GitHub Apps (one per built-in persona), installs each on your
+target repository, collects your Anthropic credentials, and writes a
+ready-to-use `.env` file. The orchestrator persona's App is aliased into the
+coordinator's `GITHUB_APP_*` env block — the coordinator's read-only polling
+rides on the orchestrator's installation, so no separate coordinator App is
+needed.
 
 This replaces the manual click-through described in
 [`README.md` § GitHub App setup](../README.md#github-app-setup).
@@ -211,7 +214,7 @@ The `verify` subcommand runs a doctor-style checklist:
 
 - **Structural** — all required env vars are present and non-empty.
 - **PEM** — every `*_GITHUB_APP_PRIVATE_KEY` has matching `BEGIN`/`END` headers.
-- **API** — `GET /app` (JWT auth) succeeds for each of the ten Apps.
+- **API** — `GET /app` (JWT auth) succeeds for each of the nine Apps.
 - **Installation** — `GET /app/installations/{id}` is live for each.
 
 Exits `0` when all checks pass; `1` otherwise.

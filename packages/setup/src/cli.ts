@@ -24,7 +24,7 @@ export type Subcommand = 'init' | 'resume' | 'verify';
 export interface CliArgs {
   /** Active subcommand. Defaults to 'init'. */
   subcommand: Subcommand;
-  /** `--prefix <s>` — name prefix for the ten GitHub Apps (e.g. "myorg"). */
+  /** `--prefix <s>` — name prefix for the nine GitHub Apps (e.g. "myorg"). */
   prefix: string | undefined;
   /** `--repo <owner/name>` — target repository. */
   repo: string | undefined;
@@ -40,6 +40,27 @@ export interface CliArgs {
    * Mutually exclusive with `--dry-run`.
    */
   stateFile: string | undefined;
+  /**
+   * `--no-compose` — skip generating `docker-compose.yml` and `souls/`. By
+   * default the wizard writes both alongside the `.env` so an operator who
+   * never cloned the source repo still has everything they need to run
+   * `docker compose up`.
+   */
+  noCompose: boolean;
+  /**
+   * `--image-tag <tag>` — override the image tag used in the generated
+   * `docker-compose.yml`. Defaults to the wizard's own `package.json`
+   * version, so a `0.3.1` wizard pins both `coordinator` and `agent` to
+   * `:0.3.1`. Pass `latest` to track tip, or an older version to pin
+   * earlier.
+   */
+  imageTag: string | undefined;
+  /**
+   * `--compose-out <path>` — override the default `docker-compose.yml`
+   * output path (default: `<cwd>/docker-compose.yml`). Souls are written to
+   * `<dirname-of-compose-out>/souls/<persona>.md` regardless of this flag.
+   */
+  composeOut: string | undefined;
   /** `-h/--help` — print help and exit. */
   showHelp: boolean;
   /** `-V/--version` — print version and exit. */
@@ -101,6 +122,9 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     dryRun: false,
     envOut: undefined,
     stateFile: undefined,
+    noCompose: false,
+    imageTag: undefined,
+    composeOut: undefined,
     showHelp: false,
     showVersion: false,
   };
@@ -164,9 +188,35 @@ export function parseArgs(argv: readonly string[]): CliArgs {
       continue;
     }
 
+    if (a === '--image-tag') {
+      const [v, newI] = consumeValue(a, argv, i);
+      args.imageTag = v;
+      i = newI;
+      continue;
+    }
+    if (a.startsWith('--image-tag=')) {
+      args.imageTag = a.slice('--image-tag='.length);
+      continue;
+    }
+
+    if (a === '--compose-out') {
+      const [v, newI] = consumeValue(a, argv, i);
+      args.composeOut = v;
+      i = newI;
+      continue;
+    }
+    if (a.startsWith('--compose-out=')) {
+      args.composeOut = a.slice('--compose-out='.length);
+      continue;
+    }
+
     // ── Boolean flags ─────────────────────────────────────────────────────
     if (a === '--dry-run') {
       args.dryRun = true;
+      continue;
+    }
+    if (a === '--no-compose') {
+      args.noCompose = true;
       continue;
     }
 

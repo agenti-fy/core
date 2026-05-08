@@ -28,6 +28,8 @@ import { Octokit } from '@octokit/rest';
 import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 import { parseDotenv } from '../dotenv.js';
 import { renderEnv, type WizardConfig } from '../env-renderer.js';
+import { renderCompose } from '../compose.js';
+import { loadBundledSouls as defaultLoadBundledSouls } from '../souls.js';
 import {
   askChoice,
   printSection,
@@ -59,6 +61,29 @@ export interface FinalizeDeps {
   dryRun?: boolean;
   /** Override the output path.  Defaults to `<cwd>/.env`. */
   envOut?: string;
+  /**
+   * When true, skip writing `docker-compose.yml` and `souls/<persona>.md`.
+   * Default false — the wizard writes both alongside the `.env` so an
+   * operator who never cloned the source repo still has everything they
+   * need to run `docker compose up`.
+   */
+  noCompose?: boolean;
+  /**
+   * Override the docker-compose.yml output path. Defaults to
+   * `<dirname-of-envPath>/docker-compose.yml`.
+   */
+  composeOut?: string;
+  /**
+   * Image tag to pin in the generated docker-compose.yml. Defaults to the
+   * caller's wizard version (the orchestrator passes `VERSION` from bin.ts).
+   * Operator override via `--image-tag` on the CLI.
+   */
+  imageTag?: string;
+  /**
+   * Image registry (without trailing slash, without package name) for the
+   * generated compose. Defaults to `ghcr.io/agenti-fy`.
+   */
+  imageRegistry?: string;
   // ── Injections for hermetic testing ────────────────────────────────────────
   /** Override `process.cwd()`. */
   cwd?: () => string;
@@ -66,6 +91,12 @@ export interface FinalizeDeps {
   fileExists?: (p: string) => Promise<boolean>;
   /** Override atomic file write.  Receives the final path, content, and mode. */
   writeEnvFile?: (p: string, content: string) => Promise<void>;
+  /**
+   * Override the bundled-souls loader. Default reads from `dist/souls/` next
+   * to the compiled finalize module. Tests inject a fixture so they don't
+   * have to copy real soul files into the test fixture directory.
+   */
+  loadBundledSouls?: () => Promise<Readonly<Record<string, string>>>;
 }
 
 /**
@@ -268,12 +299,126 @@ export async function runFinalize(deps: FinalizeDeps): Promise<{ envPath: string
     io,
   );
 
-  // ── Step 6: next-steps banner ─────────────────────────────────────────────
+  // ── Step 6: write docker-compose.yml + souls/<persona>.md ────────────────
+  // Default behavior: an operator who installed via `npx @agenti-fy/setup`
+  // and never cloned the source repo can run `docker compose up` against
+  // the GHCR-published images without any extra steps. The wizard writes a
+  // standalone compose pinned to its own version + the nine soul files so
+  // bind-mounts resolve. Skipped if --no-compose was passed.
+  if (!deps.noCompose) {
+    const composeWritten = await writeComposeAndSouls(deps, envPath);
+    if (composeWritten) {
+      // Tell operators where the artifacts landed. The next-steps banner below
+      // assumes both are in place.
+      printOk(`Wrote ${composeWritten.composePath}`, io);
+      printOk(
+        `Wrote ${composeWritten.soulsCount} soul files into ${composeWritten.soulsDir}/`,
+        io,
+      );
+    }
+  }
+
+  // ── Step 7: next-steps banner ─────────────────────────────────────────────
   printSection('Next steps', io);
-  io.stdout.write('  docker compose up -d --build\n');
+  if (deps.noCompose) {
+    io.stdout.write('  docker compose up -d --build\n');
+  } else {
+    io.stdout.write('  docker compose up -d\n');
+  }
   io.stdout.write('  pnpm e2e:doctor\n\n');
 
   return { envPath };
+}
+
+// ── compose + souls write helper ──────────────────────────────────────────────
+
+interface ComposeWriteResult {
+  composePath: string;
+  soulsDir: string;
+  soulsCount: number;
+}
+
+/**
+ * Render docker-compose.yml + write the nine bundled soul files alongside it.
+ *
+ * Refuses to overwrite either an existing compose file or any existing soul
+ * file — operators who already have customizations get a non-destructive
+ * "skipping, file exists" warning per file. The .env write is unaffected
+ * either way (this helper runs after the .env has already landed).
+ *
+ * Returns null when nothing was written (every output path collided). Returns
+ * a summary object on partial or full success — caller surfaces the result
+ * via the printOk lines in the runFinalize tail.
+ */
+async function writeComposeAndSouls(
+  deps: FinalizeDeps,
+  envPath: string,
+): Promise<ComposeWriteResult | null> {
+  const { io } = deps;
+  const fileExistsFn = deps.fileExists ?? defaultFileExists;
+  const loadSoulsFn = deps.loadBundledSouls ?? defaultLoadBundledSouls;
+
+  // Resolve compose output path: --compose-out, else sibling of envPath.
+  const composePath =
+    deps.composeOut ?? path.join(path.dirname(envPath), 'docker-compose.yml');
+  const baseDir = path.dirname(composePath);
+  const soulsDir = path.join(baseDir, 'souls');
+
+  // Image tag default: caller passes wizard's own VERSION; absent that, fall
+  // back to 'latest' so the generator never produces ":undefined".
+  const imageTag = deps.imageTag ?? 'latest';
+  const composeOpts: Parameters<typeof renderCompose>[0] = { imageTag };
+  if (deps.imageRegistry !== undefined) {
+    composeOpts.imageRegistry = deps.imageRegistry;
+  }
+
+  // ── Write the compose file ───────────────────────────────────────────────
+  const composeContent = renderCompose(composeOpts);
+  let composeWasWritten = false;
+  if (await fileExistsFn(composePath)) {
+    printWarn(
+      `Skipping ${composePath} — file exists. Delete or rename it and re-run, ` +
+        `or pass --compose-out <path> for an alternate location.`,
+      io,
+    );
+  } else {
+    // Compose file gets mode 0644 (not 0600 like .env) — it has no secrets.
+    await fs.mkdir(baseDir, { recursive: true });
+    await fs.writeFile(composePath, composeContent, { encoding: 'utf8', mode: 0o644 });
+    composeWasWritten = true;
+  }
+
+  // ── Write the souls/ directory ───────────────────────────────────────────
+  let soulsCount = 0;
+  let bundledSouls: Readonly<Record<string, string>>;
+  try {
+    bundledSouls = await loadSoulsFn();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    printErr(`Failed to load bundled souls: ${msg}`, io);
+    if (composeWasWritten) {
+      return { composePath, soulsDir, soulsCount: 0 };
+    }
+    return null;
+  }
+
+  await fs.mkdir(soulsDir, { recursive: true });
+  for (const [persona, content] of Object.entries(bundledSouls)) {
+    const soulPath = path.join(soulsDir, `${persona}.md`);
+    if (await fileExistsFn(soulPath)) {
+      printWarn(
+        `Skipping ${soulPath} — file exists. Existing customization preserved.`,
+        io,
+      );
+      continue;
+    }
+    await fs.writeFile(soulPath, content, { encoding: 'utf8', mode: 0o644 });
+    soulsCount += 1;
+  }
+
+  // Nothing-was-written case: skip the printOk in the caller by returning null.
+  if (!composeWasWritten && soulsCount === 0) return null;
+  return { composePath, soulsDir, soulsCount };
 }
 
 // ── runVerify ─────────────────────────────────────────────────────────────────

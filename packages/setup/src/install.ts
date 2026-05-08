@@ -142,7 +142,27 @@ export async function awaitInstallation(
       throw new InstallationTimeoutError(url);
     }
 
-    const { data: installations } = await octokit.apps.listInstallations();
+    let installations: Awaited<
+      ReturnType<typeof octokit.apps.listInstallations>
+    >['data'];
+    try {
+      ({ data: installations } = await octokit.apps.listInstallations());
+    } catch (err) {
+      if (isPublicKeyNotYetPropagated(err)) {
+        // GitHub propagation lag between the manifest exchange and the App's
+        // public key being available to the JWT verifier. The PEM we hold IS
+        // the right key; GitHub's auth side just hasn't seen it yet. The
+        // 401 message is "Integration must generate a public key" — confusing
+        // because the key exists; GitHub means "we don't yet have a public
+        // key registered for this App on the verifier path." Propagation is
+        // typically a few seconds. Treat as transient: sleep one interval
+        // and retry. The deadline still bounds the wait, so genuine
+        // misconfigurations surface as InstallationTimeoutError.
+        await sleepWithSignal(intervalMs, signal);
+        continue;
+      }
+      throw err;
+    }
 
     const match = installations.find(
       (inst) =>
@@ -161,6 +181,24 @@ export async function awaitInstallation(
 
     await sleepWithSignal(wait, signal);
   }
+}
+
+/**
+ * Detects the GitHub-side propagation-lag 401 that follows manifest creation:
+ *   401 + body `{"message": "Integration must generate a public key", ...}`.
+ * Octokit's RequestError carries the status as `err.status` and the body's
+ * `message` field surfaces in `err.message`. Both the 401 status AND the key-
+ * specific phrase are required to avoid misclassifying legitimate auth errors
+ * (wrong PEM, revoked App, clock skew JWT rejection, etc.) as transient.
+ */
+function isPublicKeyNotYetPropagated(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const status =
+    'status' in err && typeof (err as { status?: unknown }).status === 'number'
+      ? (err as { status: number }).status
+      : undefined;
+  if (status !== 401) return false;
+  return /must generate a public key/i.test(err.message);
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

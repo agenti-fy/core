@@ -276,10 +276,17 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
     await saveFn(stateForSave(state, passphrase), stateOpts);
 
     // Phase 4: Finalize — write the .env file (or print if --dry-run).
+    // The wizard ALSO writes a standalone docker-compose.yml + souls/ dir
+    // alongside the .env so an operator who installed via `npx
+    // @agenti-fy/setup` and never cloned the repo has a complete deploy
+    // bundle. Skipped when --no-compose is passed.
     // exactOptionalPropertyTypes: only include optional fields when defined.
     const finalizeOpts: FinalizeDeps = { state, io };
     if (args.dryRun) finalizeOpts.dryRun = true;
     if (args.envOut !== undefined) finalizeOpts.envOut = args.envOut;
+    if (args.noCompose) finalizeOpts.noCompose = true;
+    if (args.composeOut !== undefined) finalizeOpts.composeOut = args.composeOut;
+    if (args.imageTag !== undefined) finalizeOpts.imageTag = args.imageTag;
     await finalizeFn(finalizeOpts);
     await saveFn(stateForSave(state, passphrase), stateOpts);
 

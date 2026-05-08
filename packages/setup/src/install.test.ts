@@ -278,6 +278,129 @@ describe('awaitInstallation — timeout', () => {
   });
 });
 
+describe('awaitInstallation — public-key propagation lag', () => {
+  /**
+   * Stub that returns 401 "Integration must generate a public key" for the
+   * first N polls, then succeeds with `installations` from the (N+1)th call
+   * onward. Mimics the GitHub-side propagation lag right after a manifest
+   * exchange: the App's public key isn't visible to the JWT verifier yet,
+   * so listInstallations fails with 401 + that specific message.
+   */
+  function makeOctokitWithPubkeyLag(
+    failures: number,
+    eventualInstallations: Array<StubInstallation>,
+  ): Octokit {
+    let callCount = 0;
+    const octokit = new Octokit();
+    octokit.hook.wrap('request', async (request, options) => {
+      if (
+        typeof options.url === 'string' &&
+        options.url.includes('/app/installations')
+      ) {
+        callCount += 1;
+        if (callCount <= failures) {
+          // Octokit's RequestError surfaces the body's message field on
+          // err.message and exposes the HTTP status as err.status.
+          const err = Object.assign(new Error('Integration must generate a public key'), {
+            status: 401,
+          });
+          throw err;
+        }
+        return {
+          status: 200,
+          headers: {},
+          url: options.url,
+          data: eventualInstallations,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any;
+      }
+      return request(options);
+    });
+    return octokit;
+  }
+
+  it('treats 401 "Integration must generate a public key" as transient and retries', async () => {
+    const octokit = makeOctokitWithPubkeyLag(2, [{ id: 99, account: { login: 'my-org' } }]);
+
+    const result = await awaitInstallation(
+      SAMPLE_APP,
+      REPO_WITHOUT_IDS,
+      { intervalMs: 1, timeoutMs: 30_000 },
+      octokit,
+    );
+
+    expect(result.installationId).toBe(99);
+  });
+
+  it('still surfaces InstallationTimeoutError if the propagation lag persists past the deadline', async () => {
+    // Always-failing pubkey-lag → never recovers within timeoutMs.
+    const octokit = makeOctokitWithPubkeyLag(Infinity, []);
+    const promise = awaitInstallation(
+      SAMPLE_APP,
+      REPO_WITHOUT_IDS,
+      { intervalMs: 5, timeoutMs: 20 },
+      octokit,
+    );
+    void promise.catch(() => {}); // suppress unhandled rejection
+    await expect(promise).rejects.toBeInstanceOf(InstallationTimeoutError);
+  });
+
+  it('does NOT swallow other 401s (wrong PEM, revoked App) — those propagate', async () => {
+    // Different 401 message → must NOT match the propagation-lag classifier.
+    const octokit = new Octokit();
+    octokit.hook.wrap('request', async (_request, options) => {
+      if (
+        typeof options.url === 'string' &&
+        options.url.includes('/app/installations')
+      ) {
+        const err = Object.assign(new Error('A JSON web token could not be decoded'), {
+          status: 401,
+        });
+        throw err;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return {} as any;
+    });
+
+    const promise = awaitInstallation(
+      SAMPLE_APP,
+      REPO_WITHOUT_IDS,
+      { intervalMs: 1, timeoutMs: 30_000 },
+      octokit,
+    );
+    void promise.catch(() => {});
+    await expect(promise).rejects.toThrow(/JSON web token/);
+  });
+
+  it('does NOT swallow non-401 errors with the same message', async () => {
+    // A 500 with the pubkey phrase shouldn't be treated as transient — it's
+    // a server error category that warrants surfacing.
+    const octokit = new Octokit();
+    octokit.hook.wrap('request', async (_request, options) => {
+      if (
+        typeof options.url === 'string' &&
+        options.url.includes('/app/installations')
+      ) {
+        const err = Object.assign(new Error('Integration must generate a public key'), {
+          status: 500,
+        });
+        throw err;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return {} as any;
+    });
+
+    const promise = awaitInstallation(
+      SAMPLE_APP,
+      REPO_WITHOUT_IDS,
+      { intervalMs: 1, timeoutMs: 30_000 },
+      octokit,
+    );
+    void promise.catch(() => {});
+    await expect(promise).rejects.toThrow(/public key/);
+  });
+});
+
 describe('awaitInstallation — AbortSignal', () => {
   beforeEach(() => {
     vi.useRealTimers();

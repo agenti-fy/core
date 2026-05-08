@@ -24,11 +24,14 @@ function printHelp(): void {
       `  agentify-setup verify                  Verify existing .env and App installations\n` +
       `\n` +
       `Options:\n` +
-      `  --prefix <s>           Name prefix for the ten GitHub Apps (e.g. "myorg")\n` +
+      `  --prefix <s>           Name prefix for the nine GitHub Apps (e.g. "myorg")\n` +
       `  --repo <owner/name>    Target repository (e.g. "acme/my-project")\n` +
       `  --dry-run              Print the generated .env to stdout; do not write to disk\n` +
       `  --env-out <path>       Write the generated .env to <path> (default: <cwd>/.env)\n` +
       `  --state-file <path>    Override the default state file location\n` +
+      `  --no-compose           Skip generating docker-compose.yml + souls/<persona>.md\n` +
+      `  --image-tag <tag>      Image tag for the generated compose (default: ${VERSION})\n` +
+      `  --compose-out <path>   Write docker-compose.yml to <path> (default: <cwd>/docker-compose.yml)\n` +
       `  -V, --version          Print version and exit\n` +
       `  -h, --help             Show this help\n` +
       `\n` +
@@ -62,6 +65,15 @@ if (parsed.showHelp) {
 if (parsed.showVersion) {
   process.stdout.write(`${VERSION}\n`);
   process.exit(0);
+}
+
+// Default image-tag for the generated docker-compose.yml to the wizard's
+// own version, so `npx @agenti-fy/setup@0.3.1 init` writes `:0.3.1` and the
+// coordinator + agent versions stay locked together with the wizard. The
+// operator can override via `--image-tag <tag>` (parsed above into
+// parsed.imageTag).
+if (parsed.imageTag === undefined) {
+  parsed.imageTag = VERSION;
 }
 
 const exitCode = await run(parsed);

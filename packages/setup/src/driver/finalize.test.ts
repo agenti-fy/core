@@ -190,6 +190,11 @@ describe('runFinalize', () => {
         writeEnvFile: async (p) => {
           writtenPaths.push(p);
         },
+        // Suppress the docker-compose.yml + souls/ side-effect so the test
+        // doesn't try to mkdir under a fake path. Compose-write coverage
+        // lives in compose.test.ts and the runFinalize tests below that
+        // explicitly opt in.
+        noCompose: true,
       });
 
       expect(writtenPaths).toEqual(['/fake/cwd/.env']);
@@ -204,11 +209,138 @@ describe('runFinalize', () => {
         cwd: () => '/fake/cwd',
         fileExists: async () => false,
         writeEnvFile: async () => void 0,
+        noCompose: true,
       });
 
       const out = io.output();
       expect(out).toContain('docker compose up -d --build');
       expect(out).toContain('pnpm e2e:doctor');
+    });
+  });
+
+  describe('compose + souls write', () => {
+    it('writes docker-compose.yml + souls/<persona>.md alongside .env', async () => {
+      const io = makeEofIo();
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'finalize-compose-'));
+      const envPath = path.join(tmpDir, '.env');
+
+      try {
+        await runFinalize({
+          state: makeFullState(),
+          io,
+          envOut: envPath,
+          imageTag: '0.3.1',
+          // Stub the bundled-soul loader so the test doesn't depend on a
+          // built dist/souls/ tree being present (CI runs tests before build).
+          loadBundledSouls: async () =>
+            Object.freeze({
+              orchestrator: '---\nname: orchestrator\n---\n',
+              conductor: '---\nname: conductor\n---\n',
+              theorist: '---\nname: theorist\n---\n',
+              tinkerer: '---\nname: tinkerer\n---\n',
+              optimizer: '---\nname: optimizer\n---\n',
+              glue: '---\nname: glue\n---\n',
+              skeptic: '---\nname: skeptic\n---\n',
+              crafter: '---\nname: crafter\n---\n',
+              scribe: '---\nname: scribe\n---\n',
+            }),
+        });
+
+        // .env landed.
+        const envStat = await fs.stat(envPath);
+        expect(envStat.isFile()).toBe(true);
+
+        // docker-compose.yml landed and references the pinned tag.
+        const composePath = path.join(tmpDir, 'docker-compose.yml');
+        const composeContent = await fs.readFile(composePath, 'utf8');
+        expect(composeContent).toContain('image: ghcr.io/agenti-fy/coordinator:0.3.1');
+        expect(composeContent).toContain('image: ghcr.io/agenti-fy/agent:0.3.1');
+        expect(composeContent).not.toContain('build:');
+
+        // All nine soul files landed.
+        const soulsDir = path.join(tmpDir, 'souls');
+        const personas = [
+          'orchestrator', 'conductor', 'theorist', 'tinkerer', 'optimizer',
+          'glue', 'skeptic', 'crafter', 'scribe',
+        ];
+        for (const p of personas) {
+          const soulPath = path.join(soulsDir, `${p}.md`);
+          const content = await fs.readFile(soulPath, 'utf8');
+          expect(content, `${p} soul`).toContain(`name: ${p}`);
+        }
+      } finally {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('skips compose + souls writes when --no-compose is passed', async () => {
+      const io = makeEofIo();
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'finalize-nocompose-'));
+      const envPath = path.join(tmpDir, '.env');
+
+      try {
+        await runFinalize({
+          state: makeFullState(),
+          io,
+          envOut: envPath,
+          noCompose: true,
+        });
+
+        // .env still written.
+        await expect(fs.stat(envPath)).resolves.toBeDefined();
+        // No compose file, no souls dir.
+        await expect(fs.stat(path.join(tmpDir, 'docker-compose.yml'))).rejects.toThrow();
+        await expect(fs.stat(path.join(tmpDir, 'souls'))).rejects.toThrow();
+      } finally {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('does NOT overwrite an existing docker-compose.yml or soul file', async () => {
+      const io = makeEofIo();
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'finalize-collision-'));
+      const envPath = path.join(tmpDir, '.env');
+      const composePath = path.join(tmpDir, 'docker-compose.yml');
+      const soulsDir = path.join(tmpDir, 'souls');
+      const skepticSoulPath = path.join(soulsDir, 'skeptic.md');
+
+      try {
+        // Pre-create compose + ONE soul file with sentinel content.
+        await fs.writeFile(composePath, '# OPERATOR-CUSTOMIZED — DO NOT TOUCH\n');
+        await fs.mkdir(soulsDir);
+        await fs.writeFile(skepticSoulPath, '# OPERATOR-CUSTOMIZED SKEPTIC\n');
+
+        await runFinalize({
+          state: makeFullState(),
+          io,
+          envOut: envPath,
+          imageTag: '0.3.1',
+          loadBundledSouls: async () =>
+            Object.freeze({
+              orchestrator: 'orch\n',
+              conductor: 'cond\n',
+              theorist: 'theo\n',
+              tinkerer: 'tink\n',
+              optimizer: 'opt\n',
+              glue: 'glue\n',
+              skeptic: 'NEW-SKEPTIC-SHOULD-NOT-OVERWRITE\n',
+              crafter: 'craft\n',
+              scribe: 'scribe\n',
+            }),
+        });
+
+        // Compose untouched.
+        const composeAfter = await fs.readFile(composePath, 'utf8');
+        expect(composeAfter).toBe('# OPERATOR-CUSTOMIZED — DO NOT TOUCH\n');
+        // Skeptic soul untouched.
+        const skepticAfter = await fs.readFile(skepticSoulPath, 'utf8');
+        expect(skepticAfter).toBe('# OPERATOR-CUSTOMIZED SKEPTIC\n');
+        // The other 8 souls DID land (collision is per-file, not all-or-nothing).
+        const conductorAfter = await fs.readFile(path.join(soulsDir, 'conductor.md'), 'utf8');
+        expect(conductorAfter).toBe('cond\n');
+      } finally {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      }
     });
   });
 

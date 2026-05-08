@@ -1,6 +1,6 @@
 {
   "name": "@agenti-fy/tui",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Terminal UI for monitoring an agenti-fy fleet. Shows live agent status, recent jobs, token/cost breakdowns, and supports halt/resume + per-agent reset. Run with `npx @agenti-fy/tui` against your coordinator URL.",
   "license": "MIT",
   "author": "agenti-fy contributors",

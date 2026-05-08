@@ -26,6 +26,9 @@ describe('defaults', () => {
       dryRun: false,
       envOut: undefined,
       stateFile: undefined,
+      noCompose: false,
+      imageTag: undefined,
+      composeOut: undefined,
       showHelp: false,
       showVersion: false,
     });

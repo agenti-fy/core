@@ -83,8 +83,9 @@ The fastest path is Docker Compose with three sample personas.
 ### Run
 
 ```sh
-# 1. Run the setup wizard — registers ten GitHub Apps, installs them on your repo,
-#    and writes a ready-to-use .env
+# 1. Run the setup wizard — registers nine GitHub Apps (one per persona; the
+#    orchestrator's App doubles as the coordinator's polling identity),
+#    installs them on your repo, and writes a ready-to-use .env
 pnpm --filter @agenti-fy/setup start init
 ```
 
@@ -198,7 +199,7 @@ When a job fails for any reason that isn't operator-fixable (`task_error`, `sdk_
 
 The recommended path is the [`agentify-setup` wizard](docs/setup-wizard.md). The fields below document what the wizard collects and what to set if you prefer hand-rolling `.env`.
 
-The system needs ten GitHub Apps — one coordinator App (uses the global `GITHUB_APP_*` env keys) and one per-persona App (uses `<PERSONA>_GITHUB_APP_*` keys). Per-persona Apps ensure commits and comments are attributable to each persona's bot user.
+The system needs nine GitHub Apps — one per built-in persona (`<PERSONA>_GITHUB_APP_*` env keys). Per-persona Apps ensure commits and comments are attributable to each persona's bot user. The **coordinator role** does not need its own App: the orchestrator persona's App is aliased into the coordinator's `GITHUB_APP_*` env block by the wizard, so the coordinator's read-only polling rides on the orchestrator's installation. Result: one App registration per persona, total nine, no separate coordinator App to manage.
 
 Required permissions (applied to all Apps):
 - **Contents**: Read & Write — covers both the main repo AND the per-repo wiki (`<owner>/<repo>.wiki.git`), which is the storage for the KB. There is no separate "Wiki" permission key in the GitHub App API; wiki access flows through `contents`. If the wiki is not enabled on a repo, KB is silently disabled for that repo (see `KB_ENABLED`).

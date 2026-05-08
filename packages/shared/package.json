@@ -1,6 +1,6 @@
 {
   "name": "@agenti-fy/shared",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Shared schemas, label/dep parsers, and RPC types for the agenti-fy multi-agent system. Internal package; consumed by @agenti-fy/agent, @agenti-fy/coordinator, @agenti-fy/setup, and @agenti-fy/tui.",
   "license": "MIT",
   "author": "agenti-fy contributors",

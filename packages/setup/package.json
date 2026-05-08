@@ -1,6 +1,6 @@
 {
   "name": "@agenti-fy/setup",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Interactive setup wizard for agenti-fy. Registers ten GitHub Apps (one coordinator + nine per-persona) via the App Manifest flow, installs them on the target repo, collects Anthropic credentials, and writes a ready-to-use .env. Run with `npx @agenti-fy/setup init`.",
   "license": "MIT",
   "author": "agenti-fy contributors",
@@ -37,7 +37,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && pnpm copy-assets",
+    "copy-assets": "mkdir -p dist/souls && cp -f ../../souls/*.md dist/souls/",
     "dev": "tsc -p tsconfig.json --watch",
     "start": "node dist/bin.js",
     "typecheck": "tsc -b"
