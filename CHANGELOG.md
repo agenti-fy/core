@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-08
+
+### Fixed
+
+- Fixed publishing workflow on github
+
 ## [0.2.0] - 2026-05-08
 
 First public release. Ships as four artifact streams from a single `v0.2.0` tag push (see `docs/RELEASE.md`):
