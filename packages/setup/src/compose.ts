@@ -276,8 +276,21 @@ function coordinatorService(coordinatorImage: string): string {
 /**
  * Per-persona service block. Every persona uses the same shape — the only
  * differences are the env-var prefix (`<UPPERCASE_PERSONA>_GITHUB_APP_*`) and
- * the bind-mount source (`./souls/<persona>.md`). Iterated by the renderer
- * so adding/removing a persona only touches `BUILTIN_PERSONAS`.
+ * the soul path (`/app/souls/<persona>.md`). Iterated by the renderer so
+ * adding/removing a persona only touches `BUILTIN_PERSONAS`.
+ *
+ * Soul note: the agent image bakes nine default soul files at
+ * `/app/souls/<persona>.md`. We point each container's `SOUL_PATH` env at
+ * its baked-in default rather than bind-mounting from the host. macOS
+ * Endpoint Security (Sonoma+) attaches the sticky `com.apple.provenance`
+ * xattr to files Node.js writes; Docker Desktop's virtiofs layer then
+ * rejects `open(2)` on those files inside the container with `EPERM`,
+ * making host-side soul files unreadable regardless of mode. Operators who
+ * want a customized soul can override `SOUL_PATH` and bind-mount their own
+ * file at a path of their choice (re-inheriting the xattr risk for that
+ * one file, but at least it's an opt-in instead of breaking by default).
+ * The wizard still writes `./souls/<persona>.md` next to this compose as a
+ * customization starting point.
  */
 function personaService(persona: BuiltinPersona): string {
   const upper = persona.toUpperCase();
@@ -290,8 +303,12 @@ function personaService(persona: BuiltinPersona): string {
       GITHUB_APP_INSTALLATION_ID: \${${upper}_GITHUB_APP_INSTALLATION_ID}
       GITHUB_APP_PRIVATE_KEY: \${${upper}_GITHUB_APP_PRIVATE_KEY}
       GITHUB_USER: \${${upper}_GITHUB_USER}
+      # Use the soul baked into the agent image. To customize: copy
+      # ./souls/${persona}.md somewhere outside this directory tree, edit it,
+      # and override both the env (SOUL_PATH=/etc/agentify/SOUL.md) and add a
+      # \`- /your/path/${persona}.md:/etc/agentify/SOUL.md:ro\` volume below.
+      SOUL_PATH: /app/souls/${persona}.md
     volumes:
-      - ./souls/${persona}.md:/etc/agentify/SOUL.md:ro
       - ${persona}-workspace:/workspaces
       # Persisted Claude Code SDK conversation store so cached session_ids
       # stay valid across \`docker compose up\` recreates.

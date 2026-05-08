@@ -402,6 +402,15 @@ async function writeComposeAndSouls(
     return null;
   }
 
+  // Soul files are written next to the compose as a STARTING POINT for
+  // operators who want to customize. The wizard's compose no longer bind-
+  // mounts these — every persona container now resolves SOUL_PATH to the
+  // baked-in default at `/app/souls/<persona>.md` inside the agent image,
+  // sidestepping the macOS Endpoint Security `com.apple.provenance` xattr
+  // issue that made bind-mounted soul files unreadable inside containers.
+  // To customize: edit a soul here, copy it somewhere outside this directory
+  // tree, and override SOUL_PATH + add a bind-mount for that one file in a
+  // compose.override.yml.
   await fs.mkdir(soulsDir, { recursive: true });
   for (const [persona, content] of Object.entries(bundledSouls)) {
     const soulPath = path.join(soulsDir, `${persona}.md`);

@@ -44,6 +44,19 @@ RUN apk add --no-cache tini bash git github-cli
 
 COPY --from=builder /out /app
 
+# Bake the nine default soul files into the image at a known path. The
+# wizard-generated docker-compose.yml points each persona's `SOUL_PATH` env
+# at `/app/souls/<persona>.md`, sidestepping bind-mounts entirely. Necessary
+# because macOS Endpoint Security (Sonoma+) attaches the sticky
+# `com.apple.provenance` xattr to files written by signed binaries (Node.js
+# included), which Docker Desktop's virtiofs layer then rejects with `EPERM`
+# on `open` regardless of file mode — the bind-mounted file becomes
+# unreadable inside the container even with `chmod 0644`. `xattr -c` doesn't
+# clear it on Sonoma+ (the xattr is kernel-managed, not user-space).
+# In-tree `docker-compose.yml` still bind-mounts from `souls/<persona>.md`
+# (souls come from git checkout, no xattr) so dev workflow is unchanged.
+COPY souls /app/souls
+
 # Install the agentify-kb shim.  Must run as root (writing to /usr/local/bin).
 # Placed late in the runtime stage so unrelated code changes don't bust the
 # layer.  The shim hard-codes the production path of the compiled CLI module

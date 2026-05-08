@@ -36,11 +36,23 @@ describe('renderCompose', () => {
     expect(out).not.toContain('dockerfile:');
   });
 
-  it('bind-mounts ./souls/<persona>.md per persona service', () => {
+  it('points each persona at its baked-in soul via SOUL_PATH (no host bind-mount)', () => {
+    // Earlier versions bind-mounted `./souls/<persona>.md` from the host into
+    // each container at `/etc/agentify/SOUL.md`. macOS Sonoma+ attaches the
+    // sticky `com.apple.provenance` xattr to Node-written files, which Docker
+    // Desktop's virtiofs layer rejects with EPERM on `open(2)` — agents
+    // couldn't read the file regardless of mode. The wizard now sets
+    // SOUL_PATH per persona to the agent image's baked-in copy at
+    // `/app/souls/<persona>.md`, sidestepping the bind mount entirely.
     const out = renderCompose({ imageTag: '0.3.1' });
     for (const persona of BUILTIN_PERSONAS) {
-      expect(out, `soul mount for ${persona}`).toContain(
-        `./souls/${persona}.md:/etc/agentify/SOUL.md:ro`,
+      expect(out, `SOUL_PATH for ${persona}`).toContain(
+        `SOUL_PATH: /app/souls/${persona}.md`,
+      );
+      // Negative: the old bind-mount line MUST NOT come back. If a future
+      // edit re-introduces it, the EPERM regression returns.
+      expect(out, `no soul bind-mount for ${persona}`).not.toContain(
+        `./souls/${persona}.md:/etc/agentify/SOUL.md`,
       );
     }
   });

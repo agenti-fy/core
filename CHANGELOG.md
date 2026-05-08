@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-05-08
+
+### Fixed
+
+- **Bake default soul files into the agent Docker image; wizard-generated compose no longer bind-mounts souls.** macOS Endpoint Security on Sonoma+ attaches the sticky `com.apple.provenance` xattr to files Node.js writes. Docker Desktop's virtiofs layer rejects `open(2)` on those files inside the container with `EPERM: operation not permitted` (kernel-level rejection, not a file-mode issue — `chmod` doesn't help and `xattr -c`/`xattr -d`/`sudo xattr` don't reliably clear the attribute on Sonoma+). Even shell-level `cat` from inside the container fails. New approach: `packages/agent/Dockerfile` now `COPY souls /app/souls/`, baking all nine default soul files into the image. The wizard's compose generator points each persona's `SOUL_PATH` env at its baked default (`/app/souls/<persona>.md`) instead of bind-mounting from the host. Operators who want a customized soul can override `SOUL_PATH` and add their own bind-mount — re-encountering the xattr risk for that one file, but as an opt-in. The wizard still writes `./souls/<persona>.md` locally as a starting point for customization. In-tree `docker-compose.yml` is unchanged — repo-clone operators get souls from `git checkout` (no xattr) and the existing bind-mount path keeps working.
+- The unreleased macOS xattr-stripping helper (`xattr -c` after writing souls) is removed: it was best-effort and useless on Sonoma+ where `com.apple.provenance` is kernel-managed and re-attaches automatically. The bake-in-image fix above supersedes it entirely.
+
 ## [0.3.3] - 2026-05-08
 
 ### Changed
