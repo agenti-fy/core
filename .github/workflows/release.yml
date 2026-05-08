@@ -159,10 +159,20 @@ jobs:
         run: |
           NPM_PREFIX="$HOME/.npm-global"
           mkdir -p "$NPM_PREFIX"
-          npm install --prefix="$NPM_PREFIX" npm@latest
+          # Both `-g` AND `--prefix` are required. Without `-g`, npm treats
+          # `--prefix` as a project directory and installs to
+          # `$NPM_PREFIX/node_modules/npm/` with no `bin/` link — the
+          # subsequent `$NPM_PREFIX/bin/npm` reference then fails with
+          # "No such file or directory". With `-g --prefix`, npm does a
+          # global-style install rooted at the prefix, creating both
+          # `$NPM_PREFIX/bin/npm` and `$NPM_PREFIX/lib/node_modules/npm/`.
+          # Crucially, this still avoids the self-modification race that
+          # bites plain `npm install -g npm@latest` — the runner's bundled
+          # npm at `/usr/local/lib/node_modules/npm` is untouched.
+          npm install -g --prefix="$NPM_PREFIX" npm@latest
           echo "$NPM_PREFIX/bin" >> "$GITHUB_PATH"
-          # Verify with the explicit path; the PATH update only takes effect
-          # in the next step.
+          # Verify with the explicit path; $GITHUB_PATH only takes effect in
+          # subsequent steps.
           "$NPM_PREFIX/bin/npm" --version
 
       - run: pnpm install --frozen-lockfile
