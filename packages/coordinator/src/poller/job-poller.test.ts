@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pino from 'pino';
 import type { Logger } from 'pino';
-import type { AgentStatusResponse, JobResult, Method } from '@agentify/shared';
+import type { AgentStatusResponse, JobResult, Method } from '@agenti-fy/shared';
 import { CoordinatorStore } from '../store.js';
 import type { GetJobResult } from '../agent-client.js';
 import { pollJobCompletions } from './job-poller.js';

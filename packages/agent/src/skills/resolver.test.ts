@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { resolveSkill, SECURITY_PREAMBLE, InvalidPersonaNameError } from './resolver.js';
-import type { ParsedSoul } from '@agentify/shared';
+import type { ParsedSoul } from '@agenti-fy/shared';
 
 function makeSoul(overrides: Partial<ParsedSoul> = {}): ParsedSoul {
   return {

@@ -1,0 +1,206 @@
+name: Release
+
+# Triggered manually (operator pushes a tag) — never on push to main. The
+# tag itself is the version contract: `v0.1.0` → publishes 0.1.0 across all
+# four artifacts (Docker × 2, npm × 3, GitHub release × 1).
+on:
+  push:
+    tags:
+      - 'v*'
+
+# `id-token: write` is required for npm provenance (sigstore-based supply-chain
+# attestation). `packages: write` lets us push to ghcr.io. `contents: write`
+# lets the final job create the GitHub release.
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Sanity gate. Reuse the same install/build/test pipeline as CI so we never
+  # publish a broken cut. If this fails, no Docker image and no npm tarball
+  # ships — the tag is left dangling and the operator can re-cut after fixing.
+  verify:
+    name: Verify (typecheck · lint · test · build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d  # v6.0.5
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm -r build
+      # Sanity: tag version must match the version in every publishable
+      # package.json. Without this, `pnpm publish` would happily ship the
+      # version in package.json regardless of what the tag said, leading to
+      # "v0.2.0 tag but 0.1.0 on npm" drift that's painful to clean up.
+      - name: Check tag version matches package.json
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          for pkg in shared setup tui; do
+            pkg_version=$(jq -r .version "packages/$pkg/package.json")
+            if [ "$tag_version" != "$pkg_version" ]; then
+              echo "::error::tag $GITHUB_REF_NAME is v$tag_version but packages/$pkg/package.json is $pkg_version"
+              exit 1
+            fi
+          done
+
+  # Docker images go to GHCR (free for public repos, scoped to the org).
+  # Coordinator + agent are the two operator-runnable services; e2e and the
+  # standalone setup/tui are not Docker-distributed (npm-installed instead).
+  docker:
+    name: Build & push Docker images to GHCR
+    runs-on: ubuntu-latest
+    needs: verify
+    strategy:
+      matrix:
+        package: [coordinator, agent]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3.11.1
+
+      # ${{ github.repository_owner }} is the GitHub login of the org/user that
+      # owns this repo (e.g. `agenti-fy`). Lowercase via `tr` because GHCR rejects
+      # mixed-case path components even though GitHub itself is case-preserving.
+      - name: Compute image tags
+        id: tags
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          version="${GITHUB_REF_NAME#v}"
+          echo "image=ghcr.io/$owner/${{ matrix.package }}" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6.18.0
+        with:
+          context: .
+          file: packages/${{ matrix.package }}/Dockerfile
+          push: true
+          # Three tags per release: the exact version, the major.minor, and
+          # `latest`. Operators can pin to whatever cadence they want.
+          tags: |
+            ${{ steps.tags.outputs.image }}:${{ steps.tags.outputs.version }}
+            ${{ steps.tags.outputs.image }}:latest
+          # Provenance + SBOM ride along automatically. ghcr.io supports both.
+          provenance: true
+          sbom: true
+
+  # npm publish runs separately so a credential / scope issue doesn't block
+  # the Docker push (and vice versa). All three packages share the workspace's
+  # @agenti-fy/shared transitively, so the order matters: shared first, then
+  # consumers. pnpm publish rewrites `workspace:*` to the actual version on
+  # the way out, so the published tarballs have correct versioned deps.
+  #
+  # Auth uses npm trusted publishing (OIDC) — no NPM_TOKEN secret needed. The
+  # `id-token: write` permission at the workflow level lets the runner mint a
+  # short-lived OIDC token, which pnpm exchanges with the npm registry for a
+  # one-shot publish credential. The npm side requires each package to have a
+  # registered trusted publisher pointing at this repo + workflow filename
+  # (`release.yml`); see docs/RELEASE.md for the one-time setup. Consequence:
+  # if someone forks this repo and runs the workflow, npm will reject the
+  # publish — the OIDC claims won't match the registered publisher.
+  npm:
+    name: Publish npm packages (trusted publishing / OIDC)
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d  # v6.0.5
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          # registry-url makes pnpm publish target npmjs.org (the default
+          # behavior, but explicit so a future shadow-registry .npmrc can't
+          # accidentally redirect). NO NODE_AUTH_TOKEN — trusted publishing
+          # uses the OIDC token from `id-token: write`.
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+
+      # Each published package needs its own LICENSE — npm doesn't auto-copy
+      # from the monorepo root. Tests reference the root LICENSE; this just
+      # mirrors it into the three publishable trees.
+      - name: Copy LICENSE into publishable packages
+        run: |
+          for pkg in shared setup tui; do
+            cp LICENSE "packages/$pkg/LICENSE"
+          done
+
+      # `--provenance` is implicit under trusted publishing but stays explicit
+      # so the intent reads at a glance. `--no-git-checks` skips pnpm's
+      # "branch is not main / dirty tree" warnings — the verify job already
+      # confirmed tag-vs-package.json version agreement.
+      - name: Publish @agenti-fy/shared
+        working-directory: packages/shared
+        run: pnpm publish --no-git-checks --access public --provenance
+
+      - name: Publish @agenti-fy/setup
+        working-directory: packages/setup
+        run: pnpm publish --no-git-checks --access public --provenance
+
+      - name: Publish @agenti-fy/tui
+        working-directory: packages/tui
+        run: pnpm publish --no-git-checks --access public --provenance
+
+  # GitHub release goes last — it's the operator-facing artifact that points at
+  # the published images and packages. Created automatically from CHANGELOG by
+  # `gh release create --generate-notes` if no manual notes are provided. We
+  # use the auto-generated form so the release moves at the same cadence as
+  # the changelog without operator intervention.
+  github-release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    needs: [docker, npm]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --notes "
+          ## Artifacts
+
+          ### Docker images (GHCR)
+          - \`docker pull ghcr.io/$owner/coordinator:$version\`
+          - \`docker pull ghcr.io/$owner/agent:$version\`
+
+          ### npm packages
+          - \`npx @agenti-fy/setup@$version init\` — interactive setup wizard
+          - \`npx @agenti-fy/tui@$version\` — fleet monitoring TUI
+          - \`@agenti-fy/shared@$version\` — internal types and schemas (peer dep)
+
+          See the [CHANGELOG](https://github.com/${{ github.repository }}/blob/$GITHUB_REF_NAME/CHANGELOG.md) for the full diff.
+          "

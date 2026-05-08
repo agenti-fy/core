@@ -17,7 +17,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rename, rm, stat } from 'node:fs/p
 import { tmpdir } from 'node:os';
 import pino from 'pino';
 import type { Logger } from 'pino';
-import type { ParsedSoul } from '@agentify/shared';
+import type { ParsedSoul } from '@agenti-fy/shared';
 import { SoulRef } from '../soul/ref.js';
 import { WikiManager, kbPersonaTitle, kbPersonaPageFilename } from './wiki.js';
 import type { Config } from '../config.js';

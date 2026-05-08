@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { boolFlag } from '@agentify/shared';
+import { boolFlag } from '@agenti-fy/shared';
 
 const ConfigSchema = z.object({
   port: z.coerce.number().int().positive().default(8080),

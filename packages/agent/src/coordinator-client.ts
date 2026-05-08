@@ -4,7 +4,7 @@ import {
   RegisterResponseSchema,
   type RegisterRequest,
   type Status,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 

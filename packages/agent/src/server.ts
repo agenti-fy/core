@@ -11,7 +11,7 @@ import type { AgentState } from './state.js';
 import type { CoordinatorClient } from './coordinator-client.js';
 import type { SkillRunner } from './runner/skill-runner.js';
 import type { SoulRef } from './soul/ref.js';
-import type { LogBus } from '@agentify/shared';
+import type { LogBus } from '@agenti-fy/shared';
 import type { AgentMetrics } from './metrics.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerStatusRoutes } from './routes/status.js';

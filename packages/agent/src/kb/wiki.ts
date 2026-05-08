@@ -44,7 +44,7 @@
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Logger } from 'pino';
-import { parseRepo, type ParsedSoul } from '@agentify/shared';
+import { parseRepo, type ParsedSoul } from '@agenti-fy/shared';
 import type { Config } from '../config.js';
 import type { SoulRef } from '../soul/ref.js';
 import {

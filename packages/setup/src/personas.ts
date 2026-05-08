@@ -2,7 +2,7 @@
  * personas.ts — canonical 9-persona catalog for the setup wizard.
  *
  * This is the single source of truth for:
- *  - persona ordering (mirrors BUILTIN_PERSONAS from @agentify/shared)
+ *  - persona ordering (mirrors BUILTIN_PERSONAS from @agenti-fy/shared)
  *  - environment-variable prefixes used by docker-compose.yml
  *  - GitHub App name suffix (the <persona> segment appended to the user prefix)
  *  - required GitHub App permissions
@@ -12,7 +12,7 @@
  * import from here; do NOT duplicate the list elsewhere.
  */
 
-import { BUILTIN_PERSONAS, PERSONA_DEFAULTS } from '@agentify/shared';
+import { BUILTIN_PERSONAS, PERSONA_DEFAULTS } from '@agenti-fy/shared';
 
 /**
  * A single entry in the wizard persona catalog.

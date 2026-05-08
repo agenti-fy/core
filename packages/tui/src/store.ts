@@ -1,4 +1,4 @@
-import type { AgentRecord, JobRecord, RepoRecord } from '@agentify/shared';
+import type { AgentRecord, JobRecord, RepoRecord } from '@agenti-fy/shared';
 import type { LogEntry } from './logs.js';
 
 const LOG_BUFFER_CAPACITY = 500;

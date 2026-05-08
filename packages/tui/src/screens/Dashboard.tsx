@@ -5,7 +5,7 @@ import {
   isBuiltinPersona,
   type AgentRecord,
   type JobRecord,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 import type { AppState } from '../store.js';
 
 interface Props {

@@ -6,7 +6,7 @@ import {
   METHODS,
   METHOD_PATHS,
   MethodSchema,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 import type { AgentDeps } from '../server.js';
 import type { ZodFastify } from '../types.js';
 

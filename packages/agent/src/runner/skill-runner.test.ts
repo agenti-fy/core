@@ -8,7 +8,7 @@ import {
   type JobOutcome,
   type Method,
   type ParsedSoul,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 import { SoulRef } from '../soul/ref.js';
 import { AgentState } from '../state.js';
 import type { Config } from '../config.js';

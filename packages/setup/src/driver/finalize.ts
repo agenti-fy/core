@@ -25,7 +25,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { createAppAuth } from '@octokit/auth-app';
 import { Octokit } from '@octokit/rest';
-import { BUILTIN_PERSONAS } from '@agentify/shared';
+import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 import { parseDotenv } from '../dotenv.js';
 import { renderEnv, type WizardConfig } from '../env-renderer.js';
 import {

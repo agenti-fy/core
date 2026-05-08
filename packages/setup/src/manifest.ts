@@ -10,7 +10,7 @@
  *   https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest
  */
 
-import type { BuiltinPersona } from '@agentify/shared';
+import type { BuiltinPersona } from '@agenti-fy/shared';
 import { APP_PERMISSIONS, APP_DEFAULT_EVENTS } from './personas.js';
 
 // ---------------------------------------------------------------------------

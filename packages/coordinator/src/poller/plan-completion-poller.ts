@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import { parseRepo } from '@agentify/shared';
+import { parseRepo } from '@agenti-fy/shared';
 import type { CoordinatorStore } from '../store.js';
 import type { GitHubClient } from '../github/client.js';
 

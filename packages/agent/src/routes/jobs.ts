@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { JobResultSchema, MethodSchema, RepoSchema } from '@agentify/shared';
+import { JobResultSchema, MethodSchema, RepoSchema } from '@agenti-fy/shared';
 import type { AgentDeps } from '../server.js';
 import type { ZodFastify } from '../types.js';
 

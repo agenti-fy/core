@@ -36,7 +36,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import pino from 'pino';
 import type { Logger } from 'pino';
-import type { ParsedSoul } from '@agentify/shared';
+import type { ParsedSoul } from '@agenti-fy/shared';
 import { SoulRef } from '../soul/ref.js';
 import { AgentState } from '../state.js';
 import type { Config } from '../config.js';

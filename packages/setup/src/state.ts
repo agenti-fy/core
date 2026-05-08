@@ -18,7 +18,7 @@ import { renameSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { z } from 'zod';
-import { BUILTIN_PERSONAS } from '@agentify/shared';
+import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 import {
   encryptValue,
   decryptValue,

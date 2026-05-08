@@ -1,4 +1,4 @@
-# @agentify/coordinator
+# @agenti-fy/coordinator
 
 > Internals reference. For system-level architecture, routing labels, and operating instructions see the [root README](../../README.md).
 
@@ -145,10 +145,10 @@ All intervals are env vars resolved in `src/config.ts` (lines 19–45).
 
 ```bash
 # Watch mode: tsc --watch + node --watch
-pnpm --filter @agentify/coordinator dev
+pnpm --filter @agenti-fy/coordinator dev
 
 # Type-check only
-pnpm --filter @agentify/coordinator typecheck
+pnpm --filter @agenti-fy/coordinator typecheck
 ```
 
 **Required env vars** (GitHub-enabled mode):

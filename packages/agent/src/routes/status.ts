@@ -1,4 +1,4 @@
-import { AgentStatusResponseSchema } from '@agentify/shared';
+import { AgentStatusResponseSchema } from '@agenti-fy/shared';
 import type { AgentDeps } from '../server.js';
 import type { ZodFastify } from '../types.js';
 

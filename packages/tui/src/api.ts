@@ -6,7 +6,7 @@ import {
   type AgentRecord,
   type JobRecord,
   type RepoRecord,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 import { z } from 'zod';
 
 const HaltSchema = z.object({ halted: z.boolean() });

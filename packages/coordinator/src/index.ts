@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { reportConfigError } from '@agentify/shared';
+import { reportConfigError } from '@agenti-fy/shared';
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
 import { CoordinatorStore } from './store.js';

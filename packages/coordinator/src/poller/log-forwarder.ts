@@ -1,6 +1,6 @@
 import { request } from 'undici';
 import type { Logger } from 'pino';
-import type { LogBus, LogEntry } from '@agentify/shared';
+import type { LogBus, LogEntry } from '@agenti-fy/shared';
 import type { CoordinatorStore } from '../store.js';
 
 interface ForwarderDeps {

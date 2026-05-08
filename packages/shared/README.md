@@ -1,4 +1,4 @@
-# @agentify/shared
+# @agenti-fy/shared
 
 Types, schemas, constants, and runtime utilities shared across `coordinator`, `agent`, `tui`, and `e2e`.
 
@@ -136,4 +136,4 @@ The coordinator–agent HTTP contract. Request and response bodies are validated
 
 ## Build note
 
-`vitest.config.ts` at the monorepo root aliases `@agentify/shared` → `packages/shared/src/index.ts`. You can run the full test suite without first running `pnpm build` in this package — vitest resolves the TypeScript source directly. Production deployments use the compiled `dist/` output via `package.json` exports.
+`vitest.config.ts` at the monorepo root aliases `@agenti-fy/shared` → `packages/shared/src/index.ts`. You can run the full test suite without first running `pnpm build` in this package — vitest resolves the TypeScript source directly. Production deployments use the compiled `dist/` output via `package.json` exports.

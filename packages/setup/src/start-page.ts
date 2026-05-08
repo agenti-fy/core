@@ -12,7 +12,7 @@
  *   &  →  &amp;    <  →  &lt;    >  →  &gt;    "  →  &quot;    '  →  &#39;
  */
 
-import type { BuiltinPersona } from '@agentify/shared';
+import type { BuiltinPersona } from '@agenti-fy/shared';
 import type { GithubAppManifest } from './manifest.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────

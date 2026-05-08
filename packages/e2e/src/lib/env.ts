@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { boolFlag } from '@agentify/shared';
+import { boolFlag } from '@agenti-fy/shared';
 
 /**
  * Env shape required to run the E2E suite. All values must point at a real

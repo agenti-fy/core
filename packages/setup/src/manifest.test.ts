@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BUILTIN_PERSONAS } from '@agentify/shared';
+import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 import { APP_PERMISSIONS } from './personas.js';
 import {
   buildManifest,

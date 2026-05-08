@@ -9,7 +9,7 @@ import {
   type DispatchRequest,
   type JobResult,
   type Method,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 
 export type DispatchOutcome =
   | { kind: 'accepted'; data: DispatchAccepted }

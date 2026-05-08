@@ -21,7 +21,7 @@
 
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { BUILTIN_PERSONAS } from '@agentify/shared';
+import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 import type { CliArgs } from './cli.js';
 import { PromptCancelled, printErr, type IoStreams } from './prompts.js';
 import { loadState, saveState, stateForSave, type WizardState, type StateOptions } from './state.js';

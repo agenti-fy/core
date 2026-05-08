@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod';
-import { BUILTIN_PERSONAS } from '@agentify/shared';
+import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 
 // ── Schemas ───────────────────────────────────────────────────────────────
 

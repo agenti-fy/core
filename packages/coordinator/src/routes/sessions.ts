@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SessionPutSchema, SessionResponseSchema } from '@agentify/shared';
+import { SessionPutSchema, SessionResponseSchema } from '@agenti-fy/shared';
 import type { ServerDeps } from '../server.js';
 import type { ZodFastify } from '../types.js';
 

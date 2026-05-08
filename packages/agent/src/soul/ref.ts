@@ -1,4 +1,4 @@
-import type { ParsedSoul } from '@agentify/shared';
+import type { ParsedSoul } from '@agenti-fy/shared';
 
 /**
  * Mutable holder for the active SOUL. Replaces an earlier `Proxy({})` hack

@@ -4,7 +4,7 @@ import type * as ClaudeSdk from '@anthropic-ai/claude-agent-sdk';
 import type { SkillRunOptions } from './adapter.js';
 import { __test, LiveClaudeAdapter } from './live.js';
 import { loadConfig, resolveMaxTurns, applyHotReloadable } from '../config.js';
-import type { Method } from '@agentify/shared';
+import type { Method } from '@agenti-fy/shared';
 
 // ---- vi.mock must be top-level so vitest hoists it ----
 // Use vi.importActual inside the factory so SYSTEM_PROMPT_DYNAMIC_BOUNDARY

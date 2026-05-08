@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { JobResultSchema } from '@agentify/shared';
-import type { JobRecord } from '@agentify/shared';
+import { JobResultSchema } from '@agenti-fy/shared';
+import type { JobRecord } from '@agenti-fy/shared';
 import { buildParsedResultCache } from './Jobs.js';
 
 function makeJob(

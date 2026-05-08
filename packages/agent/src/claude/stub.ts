@@ -1,6 +1,6 @@
 import { ulid } from 'ulid';
 import type { Logger } from 'pino';
-import type { JobArtifacts } from '@agentify/shared';
+import type { JobArtifacts } from '@agenti-fy/shared';
 import type {
   ClaudeAdapter,
   SkillRunOptions,

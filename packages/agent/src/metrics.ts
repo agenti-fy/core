@@ -1,5 +1,5 @@
 import { collectDefaultMetrics, Counter, Histogram, Registry } from 'prom-client';
-import type { JobOutcome, Method } from '@agentify/shared';
+import type { JobOutcome, Method } from '@agenti-fy/shared';
 
 /** Scope for KB read/write operations. */
 export type KbScope = 'global' | 'persona';

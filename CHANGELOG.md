@@ -6,9 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-08
+
+First public release. Ships as four artifact streams from a single `v0.2.0` tag push (see `docs/RELEASE.md`):
+
+- Docker images on GHCR: `ghcr.io/agenti-fy/coordinator:0.2.0`, `ghcr.io/agenti-fy/agent:0.2.0` (also `:latest`).
+- npm packages with provenance attestations: `@agenti-fy/setup` (interactive setup wizard), `@agenti-fy/tui` (fleet monitoring TUI), `@agenti-fy/shared` (internal types and schemas; transitive dep of the other two). Published via [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) — no long-lived `NPM_TOKEN` secret; the GitHub Actions runner mints short-lived OIDC tokens scoped to this repo + workflow.
+- GitHub release with auto-generated notes and artifact pointers.
+
+Operator install path: `npx @agenti-fy/setup@latest init` to bootstrap, then `docker compose up -d`, then `npx @agenti-fy/tui@latest` to monitor.
+
 ### Added
 
-- **`@agentify/setup` interactive wizard** (`pnpm --filter @agentify/setup start init`) — automates ten-App GitHub registration (one coordinator + nine per-persona) via the GitHub App Manifest flow, installs each App on the target repo, collects Anthropic credentials, and writes a ready-to-use `.env`. Replaces the manual click-through described in `README.md § GitHub App setup`. See `docs/setup-wizard.md` for the full operator walkthrough. (#414)
+- **`@agenti-fy/setup` interactive wizard** (`pnpm --filter @agenti-fy/setup start init`) — automates ten-App GitHub registration (one coordinator + nine per-persona) via the GitHub App Manifest flow, installs each App on the target repo, collects Anthropic credentials, and writes a ready-to-use `.env`. Replaces the manual click-through described in `README.md § GitHub App setup`. See `docs/setup-wizard.md` for the full operator walkthrough. (#414)
 - **Knowledge base** — per-repo, wiki-backed durable memory available to every persona on every skill run; pages are read at job start and optionally appended to at end via the bundled `agentify-kb` CLI. See `docs/knowledge-base.md` and SPEC.md §23. (#226)
 - `KB_ENABLED` (default `true`), `KB_GLOBAL_PAGE` (default `KB-Global`), `KB_PAGE_PREFIX` (default `KB-`), `KB_WRITE_RETRY_MAX` (default `3`), `KB_ENTRY_MAX_BYTES` (default `1024`): five KB config vars first landed in #254 (parent plan #226) are now surfaced in the operator-facing docs. The bool uses `${KB_ENABLED:-true}` (colon-dash) in compose so an unset env resolves to `true`, not empty-string `false`. Documented in `.env.example`, `README.md`, `docker-compose.yml`, and `CHANGELOG.md`. Closes #327.
 - `MAX_RESULT_JSON_BYTES` (default `262144`, 256 KiB): hard cap on the serialized job result persisted to `jobs.result_json` (#288). Jobs whose result exceeds the cap are recorded as `task_error` with `artifacts: {}` to keep the row valid JSON for downstream consumers. Documented in `.env.example`, `README.md`, `docker-compose.yml`, `docs/operations.md`, and `packages/coordinator/README.md`.
@@ -60,9 +70,9 @@ Initial release of the agenti-fy multi-agent development system.
 
 - **Coordinator service** — polls GitHub every `WORK_POLL_S` seconds, routes work to idle agents via HTTP, owns SQLite state (agents, sessions, jobs, repos, control).
 - **Agent service** — Fastify HTTP service wrapping the Claude Agent SDK; runs per-job git worktrees; registers and heartbeats with the coordinator.
-- **TUI** (`@agentify/tui`) — Ink-based terminal dashboard with live log streaming, agent/job/repo views, and keyboard halt/resume.
-- **E2E harness** (`@agentify/e2e`) — pre-flight doctor and happy-path scenario against a real GitHub repo and live model.
-- **Shared library** (`@agentify/shared`) — Zod schemas, log bus, SSE helpers, label and method constants.
+- **TUI** (`@agenti-fy/tui`) — Ink-based terminal dashboard with live log streaming, agent/job/repo views, and keyboard halt/resume.
+- **E2E harness** (`@agenti-fy/e2e`) — pre-flight doctor and happy-path scenario against a real GitHub repo and live model.
+- **Shared library** (`@agenti-fy/shared`) — Zod schemas, log bus, SSE helpers, label and method constants.
 - **Five built-in skills**: `plan`, `implement`, `review`, `address-review`, `merge`.
 - **Nine built-in personas**: `orchestrator`, `conductor`, `theorist`, `tinkerer`, `optimizer`, `glue`, `skeptic`, `crafter`, `scribe`.
 - **Combined-label routing** — work dispatched purely by `agent:<persona>:<method>` GitHub labels; no webhooks required.

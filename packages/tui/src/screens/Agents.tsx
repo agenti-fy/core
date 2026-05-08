@@ -4,7 +4,7 @@ import {
   PERSONA_DEFAULTS,
   isBuiltinPersona,
   type AgentRecord,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 import type { AppState } from '../store.js';
 
 interface Props {

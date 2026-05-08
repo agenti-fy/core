@@ -761,13 +761,13 @@ A single `agentify/agent` image. Each running container is differentiated only b
 
 ## 17. TUI monitoring interface
 
-A terminal dashboard for live observation and basic control of the running stack. Distributed as the package `@agentify/tui` and installable as a CLI binary `agentify`. The TUI is **read-mostly**: anything destructive (halt/resume, reset, kill job) requires a confirmation modal.
+A terminal dashboard for live observation and basic control of the running stack. Distributed as the package `@agenti-fy/tui` and installable as a CLI binary `agentify`. The TUI is **read-mostly**: anything destructive (halt/resume, reset, kill job) requires a confirmation modal.
 
 ### 17.1 Distribution & invocation
 
 ```bash
 # Install once
-pnpm add -g @agentify/tui
+pnpm add -g @agenti-fy/tui
 
 # Run against the local stack
 agentify tui                                     # defaults to http://localhost:8080
@@ -908,7 +908,7 @@ Equivalent JSON via `agentify status --json` for shell scripts.
 agenti-fy/
 ├── packages/
 │   ├── shared/         # zod schemas, types shared between all services
-│   ├── agent/          # @agentify/agent service
+│   ├── agent/          # @agenti-fy/agent service
 │   │   ├── src/
 │   │   │   ├── api/    # fastify routes
 │   │   │   ├── soul/   # SOUL.md parser
@@ -917,7 +917,7 @@ agenti-fy/
 │   │   │   ├── git/    # worktree manager, octokit wrapper
 │   │   │   └── index.ts
 │   │   └── Dockerfile
-│   ├── coordinator/    # @agentify/coordinator service
+│   ├── coordinator/    # @agenti-fy/coordinator service
 │   │   ├── src/
 │   │   │   ├── api/    # fastify routes
 │   │   │   ├── poller/ # GitHub poll loop
@@ -926,7 +926,7 @@ agenti-fy/
 │   │   │   ├── logs/   # SSE fan-out for TUI
 │   │   │   └── index.ts
 │   │   └── Dockerfile
-│   └── tui/            # @agentify/tui — ink-based monitoring CLI
+│   └── tui/            # @agenti-fy/tui — ink-based monitoring CLI
 │       ├── src/
 │       │   ├── screens/   # dashboard, agents, jobs, repos, logs
 │       │   ├── components/
@@ -968,7 +968,7 @@ agenti-fy/
 4. **Skills & personas** — default `plan/implement/review/address-review/merge` skill prompts; bundled persona bodies for all nine built-ins; SOUL inline overrides.
 5. **End-to-end** — first run against a sandbox GitHub repo with the full nine-agent team.
 6. **Observability** — Prometheus, pino logs, `/jobs/:id`, SSE log stream.
-7. **TUI** — `@agentify/tui` package: dashboard, agents, jobs, repos, logs screens; halt confirmation; non-TTY `agentify status` fallback.
+7. **TUI** — `@agenti-fy/tui` package: dashboard, agents, jobs, repos, logs screens; halt confirmation; non-TTY `agentify status` fallback.
 8. **Polish** — `/reset`, stale-job sweeper, halt label, plan auto-close loop, docs, KB (per-repo wiki, see §23).
 
 ## 22. Security model
@@ -1046,7 +1046,7 @@ When the coordinator applies `needs-human` due to a hijack detection:
 
 ### 22.6 Setup wizard — secret-at-rest policy
 
-The `@agentify/setup` wizard captures PEM private keys, OAuth client secrets, webhook secrets, and Anthropic credentials as it bootstraps the ten GitHub Apps. This section documents where each secret lives at rest and the protection contract applied by the wizard. For the UX walkthrough, see `docs/setup-wizard.md`. For the architectural rationale behind the chosen strategy, see `docs/adr/001-pem-at-rest-mitigation.md`.
+The `@agenti-fy/setup` wizard captures PEM private keys, OAuth client secrets, webhook secrets, and Anthropic credentials as it bootstraps the ten GitHub Apps. This section documents where each secret lives at rest and the protection contract applied by the wizard. For the UX walkthrough, see `docs/setup-wizard.md`. For the architectural rationale behind the chosen strategy, see `docs/adr/001-pem-at-rest-mitigation.md`.
 
 #### State file
 

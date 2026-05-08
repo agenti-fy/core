@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import type { JobRecord, JobResult } from '@agentify/shared';
+import type { JobRecord, JobResult } from '@agenti-fy/shared';
 import type { CoordinatorStore } from '../store.js';
 import type { AgentRpcClient, GetJobResult } from '../agent-client.js';
 import type { CoordinatorMetrics } from '../metrics.js';

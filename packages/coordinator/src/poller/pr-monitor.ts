@@ -7,7 +7,7 @@ import {
   parseRoutingLabel,
   routingLabel,
   type Method,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 import type { CoordinatorStore } from '../store.js';
 import type { GitHubClient } from '../github/client.js';
 

@@ -7,7 +7,7 @@
 
 import { PassThrough } from 'node:stream';
 import { describe, it, expect, vi } from 'vitest';
-import { BUILTIN_PERSONAS } from '@agentify/shared';
+import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 import { runApps } from './apps.js';
 import { PromptCancelled } from '../prompts.js';
 import { CallbackTimeoutError } from '../callback-server.js';

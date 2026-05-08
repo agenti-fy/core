@@ -1,4 +1,4 @@
-# @agentify/tui
+# @agenti-fy/tui
 
 Ink/React terminal dashboard for the agentify coordinator. Renders a live multi-screen UI and also supports one-shot status snapshots.
 
@@ -11,7 +11,7 @@ Connects to a running coordinator over HTTP and SSE, displaying agent health, jo
 Start the interactive dashboard:
 
 ```sh
-pnpm --filter @agentify/tui start
+pnpm --filter @agenti-fy/tui start
 # or after building:
 node packages/tui/dist/index.js
 ```

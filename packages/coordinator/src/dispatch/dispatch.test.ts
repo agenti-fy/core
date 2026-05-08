@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pino from 'pino';
 import type { Logger } from 'pino';
-import type { Method } from '@agentify/shared';
+import type { Method } from '@agenti-fy/shared';
 import { CoordinatorStore } from '../store.js';
 import type { DispatchOutcome } from '../agent-client.js';
 import { CoordinatorMetrics } from '../metrics.js';

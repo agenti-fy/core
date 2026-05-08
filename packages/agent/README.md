@@ -1,4 +1,4 @@
-# @agentify/agent
+# @agenti-fy/agent
 
 The per-persona HTTP service that accepts dispatch requests from the coordinator, runs skills via the Claude Agent SDK, and reports results back through GitHub labels and comments.
 
@@ -202,7 +202,7 @@ CLAUDE_ADAPTER=stub \
 COORDINATOR_URL=http://localhost:3000 \
 AGENT_PUBLIC_URL=http://localhost:8080 \
 SOUL_PATH=../../souls/tinkerer.md \
-pnpm --filter @agentify/agent dev
+pnpm --filter @agenti-fy/agent dev
 ```
 
 `DISABLE_GITHUB=true` skips label flips, comments, and the bare-clone credential setup. `CLAUDE_ADAPTER=stub` returns a canned success response instead of calling the Anthropic API. The coordinator must still be reachable for registration and heartbeats; set `DISABLE_GITHUB=true` on the coordinator too if running end-to-end offline.

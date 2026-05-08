@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { JobResult } from '@agentify/shared';
+import type { JobResult } from '@agenti-fy/shared';
 import { AgentState } from './state.js';
 
 function jobResult(over: Partial<JobResult> = {}): JobResult {

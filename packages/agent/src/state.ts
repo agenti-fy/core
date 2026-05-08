@@ -4,7 +4,7 @@ import type {
   JobResult,
   Method,
   Status,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 
 export interface JobRecord {
   job_id: string;

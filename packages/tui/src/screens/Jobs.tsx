@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Box, Text } from 'ink';
-import { JobResultSchema, type JobRecord, type JobResult } from '@agentify/shared';
+import { JobResultSchema, type JobRecord, type JobResult } from '@agenti-fy/shared';
 import type { AppState } from '../store.js';
 
 const intlFmt = new Intl.NumberFormat('en-US');

@@ -51,7 +51,7 @@ import {
 } from '../prompts.js';
 import type { WizardState, PersonaCreds } from '../state.js';
 import type { ExchangedApp } from '../manifest-exchange.js';
-import type { BuiltinPersona } from '@agentify/shared';
+import type { BuiltinPersona } from '@agenti-fy/shared';
 
 // ── Injectable dependency types ───────────────────────────────────────────────
 

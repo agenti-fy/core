@@ -8,7 +8,7 @@ import {
   PERSONA_NAME_RE,
   type Method,
   type ParsedSoul,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 
 /**
  * Prepended to every system prompt so Claude knows that GitHub-sourced text

@@ -1,7 +1,31 @@
 {
-  "name": "@agentify/shared",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@agenti-fy/shared",
+  "version": "0.2.0",
+  "description": "Shared schemas, label/dep parsers, and RPC types for the agenti-fy multi-agent system. Internal package; consumed by @agenti-fy/agent, @agenti-fy/coordinator, @agenti-fy/setup, and @agenti-fy/tui.",
+  "license": "MIT",
+  "author": "agenti-fy contributors",
+  "homepage": "https://github.com/agenti-fy/core#readme",
+  "bugs": {
+    "url": "https://github.com/agenti-fy/core/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agenti-fy/core.git",
+    "directory": "packages/shared"
+  },
+  "keywords": [
+    "agenti-fy",
+    "agents",
+    "shared",
+    "schemas"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,7 +35,11 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",

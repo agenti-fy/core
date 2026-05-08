@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { Logger } from 'pino';
-import { METHODS, reportConfigError, type ParsedSoul } from '@agentify/shared';
+import { METHODS, reportConfigError, type ParsedSoul } from '@agenti-fy/shared';
 import { loadConfig, resolveMaxTurns, applyHotReloadable, type Config } from './config.js';
 import { createLogger } from './logger.js';
 import { loadSoulFromFile } from './soul/parser.js';

@@ -16,7 +16,7 @@ import {
   type RegisterRequest,
   type RepoRecord,
   type Status,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 
 /* ========================================================================== */
 /*                              Schema migrations                              */

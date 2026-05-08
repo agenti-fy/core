@@ -5,7 +5,7 @@ import {
   RegisterRequestSchema,
   RegisterResponseSchema,
   StatusSchema,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 import type { ServerDeps } from '../server.js';
 import type { ZodFastify } from '../types.js';
 

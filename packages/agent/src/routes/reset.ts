@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FailureInfoSchema, StatusSchema } from '@agentify/shared';
+import { FailureInfoSchema, StatusSchema } from '@agenti-fy/shared';
 import type { AgentDeps } from '../server.js';
 import type { ZodFastify } from '../types.js';
 

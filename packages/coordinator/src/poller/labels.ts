@@ -4,7 +4,7 @@ import {
   inProgressLabel,
   parseRoutingLabel,
   type ParsedRoutingLabel,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 
 /**
  * Pull every dispatchable routing pair off an issue's labels. The combined-label

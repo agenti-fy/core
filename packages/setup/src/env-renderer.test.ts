@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { BUILTIN_PERSONAS } from '@agentify/shared';
+import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 import { renderEnv, WizardConfigSchema, type WizardConfig } from './env-renderer.js';
 import { parseDotenv } from './dotenv.js';
 

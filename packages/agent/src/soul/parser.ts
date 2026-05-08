@@ -5,7 +5,7 @@ import {
   type Method,
   type ParsedSoul,
   SoulFrontmatterSchema,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 /** `## Skill: <slug>` — slug must be ASCII letters, dashes, or underscores. */

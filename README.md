@@ -85,7 +85,7 @@ The fastest path is Docker Compose with three sample personas.
 ```sh
 # 1. Run the setup wizard — registers ten GitHub Apps, installs them on your repo,
 #    and writes a ready-to-use .env
-pnpm --filter @agentify/setup start init
+pnpm --filter @agenti-fy/setup start init
 ```
 
 <details>
@@ -115,7 +115,7 @@ export ORCHESTRATOR_GITHUB_APP_ID=...
 docker compose up -d --build
 
 # 3. Watch the dashboard
-pnpm --filter @agentify/tui start
+pnpm --filter @agenti-fy/tui start
 #   or, after building once:
 node packages/tui/dist/index.js
 ```
@@ -463,7 +463,7 @@ pnpm lint
 pnpm format             # prettier --write
 ```
 
-The vitest config aliases `@agentify/shared` to `packages/shared/src/index.ts`, so tests run against current source without rebuilding `shared` first.
+The vitest config aliases `@agenti-fy/shared` to `packages/shared/src/index.ts`, so tests run against current source without rebuilding `shared` first.
 
 ### Layout
 

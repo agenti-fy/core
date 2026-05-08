@@ -1,4 +1,4 @@
-import type { JobArtifacts, JobOutcome, Method } from '@agentify/shared';
+import type { JobArtifacts, JobOutcome, Method } from '@agenti-fy/shared';
 
 export interface SkillRunOptions {
   method: Method;

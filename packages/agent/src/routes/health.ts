@@ -1,4 +1,4 @@
-import { HealthResponseSchema, readPackageVersion } from '@agentify/shared';
+import { HealthResponseSchema, readPackageVersion } from '@agenti-fy/shared';
 import type { AgentDeps } from '../server.js';
 import type { ZodFastify } from '../types.js';
 

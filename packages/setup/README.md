@@ -1,4 +1,4 @@
-# @agentify/setup
+# @agenti-fy/setup
 
 Interactive deployment wizard for agentify. Automates GitHub App creation (via the App Manifest flow), installation, and `.env` generation so operators can go from `git clone` to `docker compose up` without manual click-through.
 
@@ -7,7 +7,7 @@ For the full operator walkthrough, see [`docs/setup-wizard.md`](../../docs/setup
 ## Quick start
 
 ```sh
-pnpm --filter @agentify/setup build
+pnpm --filter @agenti-fy/setup build
 node packages/setup/dist/bin.js
 ```
 

@@ -8,7 +8,7 @@ import {
   type JobOutcome,
   type JobResult,
   type Method,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 import type { Config } from '../config.js';
 import type { CoordinatorClient } from '../coordinator-client.js';
 import type { AgentState } from '../state.js';

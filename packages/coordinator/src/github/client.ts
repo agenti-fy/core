@@ -1,6 +1,6 @@
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
-import { normalizePrivateKey, readPackageVersion } from '@agentify/shared';
+import { normalizePrivateKey, readPackageVersion } from '@agenti-fy/shared';
 import type { Config } from '../config.js';
 
 export type GitHubClient = Octokit;

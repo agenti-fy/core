@@ -1,5 +1,5 @@
 import type { Logger } from 'pino';
-import { HALT_LABEL } from '@agentify/shared';
+import { HALT_LABEL } from '@agenti-fy/shared';
 import type { GitHubClient } from './client.js';
 
 /**

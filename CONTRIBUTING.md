@@ -31,7 +31,7 @@ packages/
 `shared` is a build-time dependency of every other package. `pnpm typecheck` and `pnpm test`
 pick up `shared` changes without a prior build — project-references mode and the vitest alias
 handle this respectively (see [Iterating](#iterating)). Only `pnpm start` requires a prior
-rebuild: `pnpm --filter @agentify/shared build`.
+rebuild: `pnpm --filter @agenti-fy/shared build`.
 
 ---
 
@@ -79,7 +79,7 @@ pnpm dev           # pnpm -r --parallel dev
 To target a single package:
 
 ```sh
-pnpm --filter @agentify/coordinator dev
+pnpm --filter @agenti-fy/coordinator dev
 ```
 
 **Test watch mode** — vitest's interactive mode for rapid iteration:
@@ -90,7 +90,7 @@ pnpm test:watch    # vitest (interactive watch)
 
 Test files are picked up from `packages/*/src/**/*.test.ts` and `packages/*/test/**/*.test.ts`.
 
-**`@agentify/shared` source alias** — `vitest.config.ts` maps the `@agentify/shared` import to
+**`@agenti-fy/shared` source alias** — `vitest.config.ts` maps the `@agenti-fy/shared` import to
 `packages/shared/src/index.ts` directly, so tests always exercise current source without needing a
 prior `pnpm build` for the shared package. This alias is vitest-only; the coordinator and agent
 runtimes follow normal `dist/` resolution at startup.

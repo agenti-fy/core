@@ -1,7 +1,7 @@
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
 import type { Logger } from 'pino';
-import { normalizePrivateKey, parseRepo, readPackageVersion, type RepoRef } from '@agentify/shared';
+import { normalizePrivateKey, parseRepo, readPackageVersion, type RepoRef } from '@agenti-fy/shared';
 import type { Config } from '../config.js';
 
 export { parseRepo, type RepoRef };

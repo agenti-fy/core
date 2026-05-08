@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
-// Resolve `@agentify/shared` to its src entry instead of dist. Without this
+// Resolve `@agenti-fy/shared` to its src entry instead of dist. Without this
 // alias, vitest follows the package.json `main` field into dist/index.js, so
 // running tests against an unbuilt or stale shared/ silently uses old code.
 // In production, the dist build is still used (tsconfig + node resolution).
@@ -10,7 +10,7 @@ const sharedSrc = fileURLToPath(new URL('./packages/shared/src/index.ts', import
 export default defineConfig({
   resolve: {
     alias: {
-      '@agentify/shared': sharedSrc,
+      '@agenti-fy/shared': sharedSrc,
     },
   },
   test: {

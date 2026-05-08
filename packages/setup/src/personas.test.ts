@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BUILTIN_PERSONAS, PERSONA_DEFAULTS } from '@agentify/shared';
+import { BUILTIN_PERSONAS, PERSONA_DEFAULTS } from '@agenti-fy/shared';
 import {
   WIZARD_PERSONAS,
   APP_PERMISSIONS,

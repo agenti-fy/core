@@ -1,4 +1,4 @@
-# @agentify/e2e
+# @agenti-fy/e2e
 
 End-to-end test harness for agenti-fy. Runs against a real GitHub App installation, a real Anthropic API key, and a running coordinator + at least one agent.
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { RepoRecordSchema } from '@agentify/shared';
+import { RepoRecordSchema } from '@agenti-fy/shared';
 import type { ServerDeps } from '../server.js';
 import type { ZodFastify } from '../types.js';
 

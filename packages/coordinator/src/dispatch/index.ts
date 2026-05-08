@@ -3,7 +3,7 @@ import type { Logger } from 'pino';
 import type { CoordinatorStore } from '../store.js';
 import type { AgentRpcClient } from '../agent-client.js';
 import type { CoordinatorMetrics } from '../metrics.js';
-import { compareMethodsByPriority } from '@agentify/shared';
+import { compareMethodsByPriority } from '@agenti-fy/shared';
 import { requestFullScanForRepo, type PendingWorkItem } from '../poller/work-poller.js';
 
 export interface DispatchDeps {

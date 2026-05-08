@@ -11,7 +11,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
 import { describe, it, expect, vi } from 'vitest';
-import { BUILTIN_PERSONAS } from '@agentify/shared';
+import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 import type { Octokit } from '@octokit/rest';
 import { runFinalize, runVerify, IncompleteStateError } from './finalize.js';
 import type { IoStreams } from '../prompts.js';

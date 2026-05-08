@@ -1,5 +1,5 @@
 import { pino, type Logger } from 'pino';
-import { LogBus, TeeStream } from '@agentify/shared';
+import { LogBus, TeeStream } from '@agenti-fy/shared';
 import type { Config } from './config.js';
 
 export interface LoggerWithBus {

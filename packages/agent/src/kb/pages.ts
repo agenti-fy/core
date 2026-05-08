@@ -10,7 +10,7 @@
  * edit rather than a cross-package search.
  */
 
-import { PERSONA_DEFAULTS, isBuiltinPersona } from '@agentify/shared';
+import { PERSONA_DEFAULTS, isBuiltinPersona } from '@agenti-fy/shared';
 
 /**
  * Derive the wiki page filename (stem + `.md`) for a KB scope.

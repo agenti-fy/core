@@ -1,6 +1,6 @@
 {
-  "name": "@agentify/agent",
-  "version": "0.1.0",
+  "name": "@agenti-fy/agent",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -8,7 +8,9 @@
     "agentify-agent": "./dist/index.js",
     "agentify-kb": "./bin/agentify-kb"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm copy-assets",
     "copy-assets": "mkdir -p dist/skills/defaults dist/personas && cp -f src/skills/defaults/*.md dist/skills/defaults/ && cp -f src/personas/*.md dist/personas/",
@@ -17,7 +19,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@agentify/shared": "workspace:*",
+    "@agenti-fy/shared": "workspace:*",
     "@anthropic-ai/claude-agent-sdk": "^0.2.126",
     "@fastify/sensible": "^6.0.2",
     "@octokit/auth-app": "^7.1.4",

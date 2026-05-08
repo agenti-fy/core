@@ -1,13 +1,42 @@
 {
-  "name": "@agentify/tui",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@agenti-fy/tui",
+  "version": "0.2.0",
+  "description": "Terminal UI for monitoring an agenti-fy fleet. Shows live agent status, recent jobs, token/cost breakdowns, and supports halt/resume + per-agent reset. Run with `npx @agenti-fy/tui` against your coordinator URL.",
+  "license": "MIT",
+  "author": "agenti-fy contributors",
+  "homepage": "https://github.com/agenti-fy/core#readme",
+  "bugs": {
+    "url": "https://github.com/agenti-fy/core/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agenti-fy/core.git",
+    "directory": "packages/tui"
+  },
+  "keywords": [
+    "agenti-fy",
+    "tui",
+    "monitoring",
+    "ink",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
     "agentify": "./dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
@@ -15,7 +44,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@agentify/shared": "workspace:*",
+    "@agenti-fy/shared": "workspace:*",
     "ink": "^5.0.1",
     "ink-spinner": "^5.0.0",
     "react": "^18.3.1",

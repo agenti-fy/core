@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { boolFlag, type Method } from '@agentify/shared';
+import { boolFlag, type Method } from '@agenti-fy/shared';
 
 /**
  * Hard upper bound for a single KB entry written by `agentify-kb append`.

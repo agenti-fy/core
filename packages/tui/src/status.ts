@@ -4,7 +4,7 @@ import {
   type AgentRecord,
   type JobRecord,
   type RepoRecord,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 import { CoordinatorApi } from './api.js';
 
 export interface StatusSnapshot {

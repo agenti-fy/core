@@ -1,5 +1,5 @@
 import { collectDefaultMetrics, Counter, Histogram, Registry } from 'prom-client';
-import type { JobOutcome, Method } from '@agentify/shared';
+import type { JobOutcome, Method } from '@agenti-fy/shared';
 
 /**
  * Coordinator metrics. Exposed at GET /metrics in Prometheus text format.

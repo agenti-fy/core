@@ -1,6 +1,6 @@
 {
   "name": "agenti-fy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Multi-agent software development system. Coordinator + agent containers driven by the Claude Code SDK.",
   "license": "Apache-2.0",
@@ -18,8 +18,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e:doctor": "pnpm --filter @agentify/e2e doctor",
-    "e2e:run": "pnpm --filter @agentify/e2e test:e2e",
+    "e2e:doctor": "pnpm --filter @agenti-fy/e2e doctor",
+    "e2e:run": "pnpm --filter @agenti-fy/e2e test:e2e",
     "clean": "pnpm -r exec rm -rf dist node_modules/.cache && rm -rf node_modules"
   },
   "devDependencies": {
@@ -33,6 +33,8 @@
     "vitest": "^2.1.5"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3"]
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   }
 }

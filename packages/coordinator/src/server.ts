@@ -9,7 +9,7 @@ import type { Logger } from 'pino';
 import type { Config } from './config.js';
 import type { CoordinatorStore } from './store.js';
 import type { AgentRpcClient } from './agent-client.js';
-import type { LogBus } from '@agentify/shared';
+import type { LogBus } from '@agenti-fy/shared';
 import type { CoordinatorMetrics } from './metrics.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerAgentRoutes } from './routes/agents.js';

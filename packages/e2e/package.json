@@ -1,6 +1,6 @@
 {
-  "name": "@agentify/e2e",
-  "version": "0.1.0",
+  "name": "@agenti-fy/e2e",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "./dist/run.js",
@@ -8,7 +8,9 @@
     "agentify-e2e": "./dist/run.js",
     "agentify-doctor": "./dist/doctor.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -b",
@@ -16,7 +18,7 @@
     "test:e2e": "node dist/run.js"
   },
   "dependencies": {
-    "@agentify/shared": "workspace:*",
+    "@agenti-fy/shared": "workspace:*",
     "@octokit/auth-app": "^7.1.4",
     "@octokit/rest": "^21.0.2",
     "undici": "^7.0.0",

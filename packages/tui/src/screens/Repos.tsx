@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { AppState } from '../store.js';
-import type { RepoRecord } from '@agentify/shared';
+import type { RepoRecord } from '@agenti-fy/shared';
 
 export function Repos({ state }: { state: AppState }): React.ReactElement {
   return (

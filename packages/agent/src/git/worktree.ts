@@ -10,7 +10,7 @@ import {
   normalizePrivateKey,
   parseRepo,
   type ParsedSoul,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 import type { Config } from '../config.js';
 import type { SoulRef } from '../soul/ref.js';
 

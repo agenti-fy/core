@@ -42,20 +42,20 @@ CLI is not authenticated.
 ### From the source tree (pre-publish)
 
 ```sh
-pnpm --filter @agentify/setup build
-pnpm --filter @agentify/setup start init
+pnpm --filter @agenti-fy/setup build
+pnpm --filter @agenti-fy/setup start init
 ```
 
 Pass flags without the interactive prompts:
 
 ```sh
-pnpm --filter @agentify/setup start -- init --prefix myorg --repo acme/sandbox
+pnpm --filter @agenti-fy/setup start -- init --prefix myorg --repo acme/sandbox
 ```
 
-### After publish (once `@agentify/setup` is on npm)
+### After publish (once `@agenti-fy/setup` is on npm)
 
 ```sh
-npx -y @agentify/setup init
+npx -y @agenti-fy/setup init
 ```
 
 Available flags:

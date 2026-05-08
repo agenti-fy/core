@@ -1,6 +1,6 @@
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
-import { normalizeIssueLabels, parseRepo as sharedParseRepo, type RepoRef } from '@agentify/shared';
+import { normalizeIssueLabels, parseRepo as sharedParseRepo, type RepoRef } from '@agenti-fy/shared';
 import type { Env } from './env.js';
 
 export type { RepoRef };

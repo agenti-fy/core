@@ -1,4 +1,4 @@
-import { registerSseLogStream } from '@agentify/shared';
+import { registerSseLogStream } from '@agenti-fy/shared';
 import type { ServerDeps } from '../server.js';
 import type { ZodFastify } from '../types.js';
 

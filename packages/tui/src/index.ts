@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { render } from 'ink';
 import React from 'react';
-import { readPackageVersion } from '@agentify/shared';
+import { readPackageVersion } from '@agenti-fy/shared';
 import { App } from './App.js';
 import { CoordinatorApi } from './api.js';
 import { renderText, snapshot } from './status.js';

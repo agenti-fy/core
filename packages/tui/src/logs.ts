@@ -1,5 +1,5 @@
 import { request } from 'undici';
-import type { LogEntry } from '@agentify/shared';
+import type { LogEntry } from '@agenti-fy/shared';
 
 export type { LogEntry };
 

@@ -5,7 +5,7 @@
  * Parses argv via cli.ts, short-circuits for --help / --version, then
  * dispatches to run() (the wizard orchestrator).
  */
-import { readPackageVersion } from '@agentify/shared';
+import { readPackageVersion } from '@agenti-fy/shared';
 import { parseArgs, CliError } from './cli.js';
 import { run } from './index.js';
 

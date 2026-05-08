@@ -1,13 +1,15 @@
 {
-  "name": "@agentify/coordinator",
-  "version": "0.1.0",
+  "name": "@agenti-fy/coordinator",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
     "agentify-coordinator": "./dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch & node --watch dist/index.js",
@@ -15,7 +17,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@agentify/shared": "workspace:*",
+    "@agenti-fy/shared": "workspace:*",
     "@fastify/sensible": "^6.0.2",
     "@octokit/auth-app": "^7.1.4",
     "@octokit/rest": "^21.0.2",

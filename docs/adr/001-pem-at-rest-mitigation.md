@@ -10,7 +10,7 @@
 
 ## Context
 
-The `@agentify/setup` wizard guides operators through a one-time bootstrap:
+The `@agenti-fy/setup` wizard guides operators through a one-time bootstrap:
 it creates 9 GitHub Apps (one per persona) plus a coordinator, captures their
 PEM private keys via GitHub's App Manifest conversion endpoint, and writes them
 into `.env` for docker-compose.  The wizard is **resumable** — an interrupted

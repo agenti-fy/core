@@ -5,7 +5,7 @@ import {
   type JobArtifacts,
   type JobOutcome,
   type Method,
-} from '@agentify/shared';
+} from '@agenti-fy/shared';
 import type {
   ClaudeAdapter,
   SkillRunOptions,

@@ -1,12 +1,41 @@
 {
-  "name": "@agentify/setup",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@agenti-fy/setup",
+  "version": "0.2.0",
+  "description": "Interactive setup wizard for agenti-fy. Registers ten GitHub Apps (one coordinator + nine per-persona) via the App Manifest flow, installs them on the target repo, collects Anthropic credentials, and writes a ready-to-use .env. Run with `npx @agenti-fy/setup init`.",
+  "license": "MIT",
+  "author": "agenti-fy contributors",
+  "homepage": "https://github.com/agenti-fy/core#readme",
+  "bugs": {
+    "url": "https://github.com/agenti-fy/core/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agenti-fy/core.git",
+    "directory": "packages/setup"
+  },
+  "keywords": [
+    "agenti-fy",
+    "setup",
+    "wizard",
+    "github-app",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "bin": {
     "agentify-setup": "./dist/bin.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
@@ -14,7 +43,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@agentify/shared": "workspace:*",
+    "@agenti-fy/shared": "workspace:*",
     "@octokit/auth-app": "^7.1.1",
     "@octokit/rest": "^21.0.2",
     "undici": "^7.0.0",

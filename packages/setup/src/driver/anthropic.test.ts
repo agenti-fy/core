@@ -10,7 +10,7 @@
 
 import { PassThrough } from 'node:stream';
 import { describe, it, expect } from 'vitest';
-import { BUILTIN_PERSONAS } from '@agentify/shared';
+import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 import { runAnthropic } from './anthropic.js';
 import { PromptCancelled } from '../prompts.js';
 import type { IoStreams } from '../prompts.js';
