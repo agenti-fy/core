@@ -116,4 +116,36 @@ describe('renderCompose', () => {
     expect(out.endsWith('\n')).toBe(true);
     expect(out.endsWith('\n\n')).toBe(false);
   });
+
+  it('every service under `services:` is indented at column 2 (no col-0 services)', () => {
+    // v0.3.1's first cut had `coordinator:` flush-left while every persona
+    // was at column 2, which docker compose rejected with
+    // "yaml: line 17: did not find expected key" (mismatched mapping
+    // indentation under `services:`). This test locks the fix in: every
+    // top-level service key MUST start with two spaces.
+    const out = renderCompose({ imageTag: '0.3.1' });
+
+    // Find the `services:` line and the next top-level (col-0) line after it.
+    const lines = out.split('\n');
+    const servicesIdx = lines.findIndex((l) => l === 'services:');
+    expect(servicesIdx).toBeGreaterThanOrEqual(0);
+
+    // Walk forward until we hit a column-0 non-blank line (end of services
+    // block). Every non-blank line before that whose first character is the
+    // start of a service key (matches /^\S/) is the bug we're guarding against.
+    for (let i = servicesIdx + 1; i < lines.length; i++) {
+      const line = lines[i] ?? '';
+      if (line === '') continue;
+      // Hit the next top-level section (volumes:, etc.)?
+      if (/^[a-z]/.test(line)) break;
+      // Anything inside services: must start with at least one space.
+      expect(line, `line ${i + 1} inside services: starts at col 0: ${JSON.stringify(line)}`).toMatch(
+        /^ /,
+      );
+    }
+
+    // Spot-check the canonical pair that broke originally.
+    expect(out).toMatch(/^\s{2}coordinator:/m);
+    expect(out).toMatch(/^\s{2}orchestrator:/m);
+  });
 });

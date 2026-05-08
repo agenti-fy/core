@@ -84,7 +84,13 @@ export function renderCompose(opts: RenderComposeOptions): string {
     agentDefaultsAnchor(agentImage).trim(),
     '',
     'services:',
-    coordinatorService(coordinatorImage).trim(),
+    // stripBlanks (NOT trim) — `.trim()` would strip the 2-space indent that
+    // makes `coordinator:` a child of `services:`. Real bug from v0.3.1's
+    // first cut: yielded `coordinator:` flush-left + `orchestrator:` at col 2,
+    // which docker compose rejects as "did not find expected key" (mismatched
+    // mapping indentation under `services:`). Preserve column-2 indentation;
+    // only strip leading/trailing blank lines.
+    stripBlankEdges(coordinatorService(coordinatorImage)),
     '',
     personaServices,
     monitoringBlock ? '' : '',
@@ -100,6 +106,18 @@ export function renderCompose(opts: RenderComposeOptions): string {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trimEnd() + '\n';
+}
+
+/**
+ * Strip leading and trailing BLANK lines from a multi-line string, but
+ * preserve any leading whitespace on the first non-blank line. Distinct from
+ * `.trim()` — `.trim()` would also eat the indentation we need to keep
+ * indented blocks (like service entries under `services:`) at the right
+ * column. Used for any template chunk whose first non-blank line is
+ * indented.
+ */
+function stripBlankEdges(s: string): string {
+  return s.replace(/^[ \t]*\n+|\n+[ \t]*$/g, '');
 }
 
 // ── Templates ─────────────────────────────────────────────────────────────────

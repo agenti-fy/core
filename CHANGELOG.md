@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-08
+
+### Fixed
+
+- **Setup wizard's generated `docker-compose.yml` failed to parse with `yaml: line 17: did not find expected key`.** Root cause: a `.trim()` call in the compose renderer stripped the leading 2-space indent on the `coordinator:` service block, leaving it flush-left while every persona service kept its column-2 indent. docker compose's go-yaml parser then couldn't reconcile the inconsistent indentation under `services:`. Replaced the offending `.trim()` with a `stripBlankEdges()` helper that strips leading/trailing blank lines but preserves leading whitespace on the first non-blank line. Regression test pins every service under `services:` at column 2 so this can't recur silently.
+- npm package description for `@agenti-fy/setup` updated from "ten GitHub Apps (one coordinator + nine per-persona)" to "nine GitHub Apps (one per built-in persona)" — same doc drift the README/CHANGELOG/`--help` got cleaned up in 0.3.1, but the npm-rendered package page still showed the stale claim because the description field lives only in `package.json`.
+
 ## [0.3.1] - 2026-05-08
 
 ### Added

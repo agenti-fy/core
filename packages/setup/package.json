@@ -1,7 +1,7 @@
 {
   "name": "@agenti-fy/setup",
-  "version": "0.3.1",
-  "description": "Interactive setup wizard for agenti-fy. Registers ten GitHub Apps (one coordinator + nine per-persona) via the App Manifest flow, installs them on the target repo, collects Anthropic credentials, and writes a ready-to-use .env. Run with `npx @agenti-fy/setup init`.",
+  "version": "0.3.2",
+  "description": "Interactive setup wizard for agenti-fy. Registers nine GitHub Apps (one per built-in persona) via the App Manifest flow, installs them on the target repo, collects Anthropic credentials, and writes a ready-to-use .env. Generates a standalone docker-compose.yml + souls/ alongside the .env so operators can run `docker compose up` without cloning the source repo. Run with `npx @agenti-fy/setup init`.",
   "license": "MIT",
   "author": "agenti-fy contributors",
   "homepage": "https://github.com/agenti-fy/core#readme",
