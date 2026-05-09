@@ -83,22 +83,42 @@ describe('renderCompose', () => {
     }
   });
 
-  it('omits the monitoring profile by default', () => {
+  it('always emits the monitoring block, gated by the `monitoring` profile', () => {
+    // Earlier versions had an `includeMonitoring` opt-in flag that defaulted
+    // to false — so the wizard-generated compose never carried Prometheus +
+    // Grafana, even though `docker compose --profile monitoring up` is the
+    // standard opt-in idiom that should work out of the box. The flag is
+    // gone; the block is always present, the `profiles: [monitoring]` gate
+    // keeps it inert until the operator opts in at runtime.
     const out = renderCompose({ imageTag: '0.3.1' });
-    expect(out).not.toContain('prom/prometheus');
-    expect(out).not.toContain('grafana/grafana');
-    expect(out).not.toContain('profiles:');
-    expect(out).not.toContain('prometheus-data:');
-    expect(out).not.toContain('grafana-data:');
-  });
-
-  it('includes the monitoring profile when explicitly enabled', () => {
-    const out = renderCompose({ imageTag: '0.3.1', includeMonitoring: true });
     expect(out).toContain('prom/prometheus:latest');
     expect(out).toContain('grafana/grafana:latest');
+    // The profile gate is what makes "always emit" safe.
     expect(out).toMatch(/profiles:\s*\n\s*-\s*monitoring/);
-    expect(out).toContain('prometheus-data:');
-    expect(out).toContain('grafana-data:');
+    // Top-level volumes block carries the prometheus + grafana data volumes.
+    expect(out).toMatch(/^\s{2}prometheus-data:\s*$/m);
+    expect(out).toMatch(/^\s{2}grafana-data:\s*$/m);
+  });
+
+  it('monitoring services are NOT in the default-up service set', () => {
+    // Defense-in-depth check: every monitoring service block carries the
+    // `profiles:` field. A future edit that forgets the gate would surface
+    // here — running `docker compose up` would suddenly pull Prometheus +
+    // Grafana, which is never what an operator wants by default.
+    const out = renderCompose({ imageTag: '0.3.1' });
+    // Locate the prometheus block and verify the next `profiles:` line
+    // appears within it (i.e. the block has the gate).
+    const prometheusIdx = out.indexOf('prom/prometheus:latest');
+    const grafanaIdx = out.indexOf('grafana/grafana:latest');
+    expect(prometheusIdx).toBeGreaterThan(0);
+    expect(grafanaIdx).toBeGreaterThan(prometheusIdx);
+    // Both services must have a `profiles:\n  - monitoring` after their
+    // image: line — slice from each image: line to the end of the doc and
+    // confirm the gate appears before any other top-level construct.
+    const prometheusBlock = out.slice(prometheusIdx, grafanaIdx);
+    const grafanaBlock = out.slice(grafanaIdx);
+    expect(prometheusBlock).toMatch(/profiles:\s*\n\s*-\s*monitoring/);
+    expect(grafanaBlock).toMatch(/profiles:\s*\n\s*-\s*monitoring/);
   });
 
   it('declares the coordinator-data volume', () => {

@@ -13,8 +13,8 @@
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-/** The three wizard subcommands. */
-export type Subcommand = 'init' | 'resume' | 'verify';
+/** The four wizard subcommands. */
+export type Subcommand = 'init' | 'resume' | 'verify' | 'install';
 
 /**
  * Parsed CLI arguments returned by `parseArgs`.
@@ -40,6 +40,13 @@ export interface CliArgs {
    * Mutually exclusive with `--dry-run`.
    */
   stateFile: string | undefined;
+  /**
+   * `--env-in <path>` — override the default `.env` input path for the
+   * `install` subcommand (default: `<cwd>/.env`). The `install` subcommand
+   * reads existing App credentials from this file rather than registering
+   * fresh Apps.
+   */
+  envIn: string | undefined;
   /**
    * `--no-compose` — skip generating `docker-compose.yml` and `souls/`. By
    * default the wizard writes both alongside the `.env` so an operator who
@@ -122,6 +129,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     dryRun: false,
     envOut: undefined,
     stateFile: undefined,
+    envIn: undefined,
     noCompose: false,
     imageTag: undefined,
     composeOut: undefined,
@@ -188,6 +196,17 @@ export function parseArgs(argv: readonly string[]): CliArgs {
       continue;
     }
 
+    if (a === '--env-in') {
+      const [v, newI] = consumeValue(a, argv, i);
+      args.envIn = v;
+      i = newI;
+      continue;
+    }
+    if (a.startsWith('--env-in=')) {
+      args.envIn = a.slice('--env-in='.length);
+      continue;
+    }
+
     if (a === '--image-tag') {
       const [v, newI] = consumeValue(a, argv, i);
       args.imageTag = v;
@@ -224,7 +243,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     if (a === '--') {
       // Next token (if a valid subcommand) is treated as positional.
       const next = argv[i + 1];
-      if (next === 'init' || next === 'resume' || next === 'verify') {
+      if (next === 'init' || next === 'resume' || next === 'verify' || next === 'install') {
         args.subcommand = next;
         i++;
       }
@@ -232,7 +251,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     }
 
     // ── Positional subcommands ────────────────────────────────────────────
-    if (a === 'init' || a === 'resume' || a === 'verify') {
+    if (a === 'init' || a === 'resume' || a === 'verify' || a === 'install') {
       args.subcommand = a;
       continue;
     }

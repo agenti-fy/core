@@ -35,6 +35,10 @@ import {
   type FinalizeDeps,
   type VerifyDeps,
 } from './driver/finalize.js';
+import {
+  runInstallExisting as driverRunInstallExisting,
+  type InstallExistingDeps,
+} from './driver/install-existing.js';
 
 // ── Phase types ───────────────────────────────────────────────────────────────
 
@@ -101,6 +105,8 @@ export interface RunDeps {
   runFinalize?: (deps: FinalizeDeps) => Promise<{ envPath: string }>;
   /** Overrides the Verify phase (verify subcommand path). */
   runVerify?: (deps: VerifyDeps) => Promise<number>;
+  /** Overrides the install-existing phase (install subcommand path). */
+  runInstallExisting?: (deps: InstallExistingDeps) => Promise<number>;
   /** Overrides the state-loader (useful for hermetic tests). */
   loadState?: (prefix: string, opts?: StateOptions) => Promise<WizardState | null>;
   /** Overrides the state-writer (useful for hermetic tests). */
@@ -201,7 +207,38 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
   const anthropicFn = deps?.runAnthropic ?? runAnthropic;
   const finalizeFn = deps?.runFinalize ?? driverRunFinalize;
   const verifyFn = deps?.runVerify ?? driverRunVerify;
+  const installExistingFn = deps?.runInstallExisting ?? driverRunInstallExisting;
   const passphraseFn = deps?.passphraseProvider ?? getSessionPassphrase;
+
+  // ── install subcommand: short-circuit before state load + passphrase ──────
+  // The install subcommand operates entirely off an existing .env (App
+  // credentials produced by a prior wizard run). It does NOT touch the
+  // wizard's checkpoint state or require a passphrase — the .env is
+  // plaintext at the operator boundary and that's where the App PEMs come
+  // from. Doing this before the passphrase prompt and the preamble keeps
+  // the install flow zero-ceremony: the operator just needs --repo.
+  if (args.subcommand === 'install') {
+    if (!args.repo) {
+      io.stdout.write(
+        'agentify-setup install: --repo <owner/name> is required.\n' +
+          'Example: agentify-setup install --repo my-org/another-project\n',
+      );
+      return 2;
+    }
+    const [owner, name] = args.repo.split('/');
+    if (!owner || !name) {
+      io.stdout.write(
+        `agentify-setup install: --repo must be in <owner>/<name> form (got "${args.repo}")\n`,
+      );
+      return 2;
+    }
+    const envPath = args.envIn ?? path.join(process.cwd(), '.env');
+    return await installExistingFn({
+      io,
+      envPath,
+      repo: { owner, name },
+    });
+  }
 
   // State files live in a directory; --state-file's dirname overrides the default.
   const stateDir = args.stateFile ? path.dirname(args.stateFile) : undefined;

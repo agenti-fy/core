@@ -22,6 +22,7 @@ function printHelp(): void {
       `  agentify-setup [init]                  Run the full setup wizard (default)\n` +
       `  agentify-setup resume                  Resume a previously interrupted session\n` +
       `  agentify-setup verify                  Verify existing .env and App installations\n` +
+      `  agentify-setup install --repo <r>      Add an existing fleet's Apps to a new repo\n` +
       `\n` +
       `Options:\n` +
       `  --prefix <s>           Name prefix for the nine GitHub Apps (e.g. "myorg")\n` +
@@ -29,6 +30,7 @@ function printHelp(): void {
       `  --dry-run              Print the generated .env to stdout; do not write to disk\n` +
       `  --env-out <path>       Write the generated .env to <path> (default: <cwd>/.env)\n` +
       `  --state-file <path>    Override the default state file location\n` +
+      `  --env-in <path>        Read existing App credentials from this .env (install)\n` +
       `  --no-compose           Skip generating docker-compose.yml + souls/<persona>.md\n` +
       `  --image-tag <tag>      Image tag for the generated compose (default: ${VERSION})\n` +
       `  --compose-out <path>   Write docker-compose.yml to <path> (default: <cwd>/docker-compose.yml)\n` +
@@ -39,6 +41,7 @@ function printHelp(): void {
       `  agentify-setup init --prefix myorg --repo acme/my-project\n` +
       `  agentify-setup resume --state-file /tmp/setup.json\n` +
       `  agentify-setup verify --env-out /etc/agentify/.env\n` +
+      `  agentify-setup install --repo acme/another-project\n` +
       `\n` +
       `  🎯 The Orchestrator · agentify-setup wizard\n`,
   );

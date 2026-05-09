@@ -29,7 +29,10 @@ import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 import { parseDotenv } from '../dotenv.js';
 import { renderEnv, type WizardConfig } from '../env-renderer.js';
 import { renderCompose } from '../compose.js';
-import { loadBundledSouls as defaultLoadBundledSouls } from '../souls.js';
+import {
+  loadBundledSouls as defaultLoadBundledSouls,
+  loadBundledPrometheusYaml as defaultLoadBundledPrometheusYaml,
+} from '../souls.js';
 import {
   askChoice,
   printSection,
@@ -97,6 +100,13 @@ export interface FinalizeDeps {
    * have to copy real soul files into the test fixture directory.
    */
   loadBundledSouls?: () => Promise<Readonly<Record<string, string>>>;
+  /**
+   * Override the bundled prometheus.yml loader. Default reads from
+   * `dist/prometheus.yml` next to the compiled finalize module. Tests
+   * inject a fixture so they don't depend on the build's copy-assets step
+   * having run.
+   */
+  loadBundledPrometheusYaml?: () => Promise<string>;
 }
 
 /**
@@ -315,6 +325,12 @@ export async function runFinalize(deps: FinalizeDeps): Promise<{ envPath: string
         `Wrote ${composeWritten.soulsCount} soul files into ${composeWritten.soulsDir}/`,
         io,
       );
+      if (composeWritten.prometheusPath !== null) {
+        printOk(
+          `Wrote ${composeWritten.prometheusPath} (used by \`docker compose --profile monitoring up\`)`,
+          io,
+        );
+      }
     }
   }
 
@@ -336,6 +352,8 @@ interface ComposeWriteResult {
   composePath: string;
   soulsDir: string;
   soulsCount: number;
+  /** Path to the prometheus.yml that was written, or null if skipped (already exists / load failed). */
+  prometheusPath: string | null;
 }
 
 /**
@@ -357,12 +375,14 @@ async function writeComposeAndSouls(
   const { io } = deps;
   const fileExistsFn = deps.fileExists ?? defaultFileExists;
   const loadSoulsFn = deps.loadBundledSouls ?? defaultLoadBundledSouls;
+  const loadPromYamlFn = deps.loadBundledPrometheusYaml ?? defaultLoadBundledPrometheusYaml;
 
   // Resolve compose output path: --compose-out, else sibling of envPath.
   const composePath =
     deps.composeOut ?? path.join(path.dirname(envPath), 'docker-compose.yml');
   const baseDir = path.dirname(composePath);
   const soulsDir = path.join(baseDir, 'souls');
+  const prometheusPath = path.join(baseDir, 'prometheus.yml');
 
   // Image tag default: caller passes wizard's own VERSION; absent that, fall
   // back to 'latest' so the generator never produces ":undefined".
@@ -388,6 +408,35 @@ async function writeComposeAndSouls(
     composeWasWritten = true;
   }
 
+  // ── Write prometheus.yml alongside the compose ───────────────────────────
+  // The wizard's compose always emits the monitoring services, gated by
+  // `profiles: [monitoring]`. The Prometheus container bind-mounts
+  // `./prometheus.yml`, so without this file `docker compose --profile
+  // monitoring up` would crash the container immediately. Bundle the
+  // default config (same one the in-tree compose uses) so monitoring works
+  // out of the box. Refuse to overwrite existing customizations.
+  let prometheusWritten: string | null = null;
+  if (await fileExistsFn(prometheusPath)) {
+    printWarn(
+      `Skipping ${prometheusPath} — file exists. Existing customization preserved.`,
+      io,
+    );
+  } else {
+    try {
+      const content = await loadPromYamlFn();
+      await fs.writeFile(prometheusPath, content, { encoding: 'utf8', mode: 0o644 });
+      prometheusWritten = prometheusPath;
+    } catch (err) {
+      // Non-fatal — operator can copy <repo>/prometheus.yml manually if they
+      // want monitoring. Compose stays usable without monitoring profile.
+      printWarn(
+        `Could not write ${prometheusPath}: ${err instanceof Error ? err.message : String(err)}. ` +
+          `\`docker compose --profile monitoring up\` will fail until you supply this file.`,
+        io,
+      );
+    }
+  }
+
   // ── Write the souls/ directory ───────────────────────────────────────────
   let soulsCount = 0;
   let bundledSouls: Readonly<Record<string, string>>;
@@ -397,7 +446,7 @@ async function writeComposeAndSouls(
     const msg = err instanceof Error ? err.message : String(err);
     printErr(`Failed to load bundled souls: ${msg}`, io);
     if (composeWasWritten) {
-      return { composePath, soulsDir, soulsCount: 0 };
+      return { composePath, soulsDir, soulsCount: 0, prometheusPath: prometheusWritten };
     }
     return null;
   }
@@ -426,8 +475,8 @@ async function writeComposeAndSouls(
   }
 
   // Nothing-was-written case: skip the printOk in the caller by returning null.
-  if (!composeWasWritten && soulsCount === 0) return null;
-  return { composePath, soulsDir, soulsCount };
+  if (!composeWasWritten && soulsCount === 0 && prometheusWritten === null) return null;
+  return { composePath, soulsDir, soulsCount, prometheusPath: prometheusWritten };
 }
 
 // ── runVerify ─────────────────────────────────────────────────────────────────

@@ -44,14 +44,6 @@ export interface RenderComposeOptions {
    * via the `--image-tag` CLI flag.
    */
   imageTag: string;
-  /**
-   * Include the optional monitoring profile (prometheus + grafana). Default
-   * `false` — monitoring is opt-in and operators who want it can run
-   * `docker compose --profile monitoring up`. Setting this to `true` doesn't
-   * change the generated file's profile-gate; it only controls whether the
-   * monitoring services are present in the file at all.
-   */
-  includeMonitoring?: boolean;
 }
 
 const DEFAULT_REGISTRY = 'ghcr.io/agenti-fy';
@@ -70,12 +62,17 @@ export function renderCompose(opts: RenderComposeOptions): string {
   const tag = opts.imageTag;
   const coordinatorImage = `${registry}/coordinator:${tag}`;
   const agentImage = `${registry}/agent:${tag}`;
-  const includeMonitoring = opts.includeMonitoring ?? false;
 
   const personaServices = BUILTIN_PERSONAS.map((p) => personaService(p)).join('\n\n');
-  const monitoringBlock = includeMonitoring ? MONITORING_BLOCK : '';
   const personaVolumes = BUILTIN_PERSONAS.map((p) => `  ${p}-workspace:\n  ${p}-claude:`).join('\n');
 
+  // Monitoring (Prometheus + Grafana) is ALWAYS emitted. The services carry
+  // `profiles: [monitoring]` so they stay inert under `docker compose up`
+  // and only start when an operator opts in via
+  // `docker compose --profile monitoring up`. Mirrors the in-tree compose's
+  // behavior so a wizard-generated deploy can light up monitoring without a
+  // re-run, and so `--profile monitoring` works the same way for clone-based
+  // and wizard-based operators.
   return [
     HEADER_COMMENT.trim(),
     '',
@@ -93,13 +90,19 @@ export function renderCompose(opts: RenderComposeOptions): string {
     stripBlankEdges(coordinatorService(coordinatorImage)),
     '',
     personaServices,
-    monitoringBlock ? '' : '',
-    monitoringBlock.trim(),
+    '',
+    // stripBlankEdges (NOT trim) — same reason as coordinatorService: the
+    // first non-blank line is a comment indented at column 2 (inside the
+    // services: mapping), and `.trim()` would strip that indent and
+    // surface the comment at column 0, which our "every service indented"
+    // regression test correctly catches.
+    stripBlankEdges(MONITORING_BLOCK),
     '',
     'volumes:',
     '  coordinator-data:',
     personaVolumes,
-    includeMonitoring ? '  prometheus-data:\n  grafana-data:' : '',
+    '  prometheus-data:',
+    '  grafana-data:',
     '',
   ]
     .filter((s) => s !== null)

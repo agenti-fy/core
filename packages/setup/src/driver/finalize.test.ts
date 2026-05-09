@@ -244,6 +244,8 @@ describe('runFinalize', () => {
               crafter: '---\nname: crafter\n---\n',
               scribe: '---\nname: scribe\n---\n',
             }),
+          loadBundledPrometheusYaml: async () =>
+            "global:\n  scrape_interval: 15s\nscrape_configs:\n  - job_name: 'coordinator'\n",
         });
 
         // .env landed.
@@ -257,6 +259,13 @@ describe('runFinalize', () => {
         expect(composeContent).toContain('image: ghcr.io/agenti-fy/agent:0.3.1');
         expect(composeContent).not.toContain('build:');
 
+        // prometheus.yml landed (always emitted; profile-gated in compose
+        // means inert by default but `docker compose --profile monitoring up`
+        // works out of the box).
+        const promPath = path.join(tmpDir, 'prometheus.yml');
+        const promContent = await fs.readFile(promPath, 'utf8');
+        expect(promContent).toContain("job_name: 'coordinator'");
+
         // All nine soul files landed.
         const soulsDir = path.join(tmpDir, 'souls');
         const personas = [
@@ -268,6 +277,73 @@ describe('runFinalize', () => {
           const content = await fs.readFile(soulPath, 'utf8');
           expect(content, `${p} soul`).toContain(`name: ${p}`);
         }
+      } finally {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('does NOT overwrite an existing prometheus.yml', async () => {
+      const io = makeEofIo();
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'finalize-promcollision-'));
+      const envPath = path.join(tmpDir, '.env');
+      const promPath = path.join(tmpDir, 'prometheus.yml');
+
+      try {
+        // Pre-create prometheus.yml with operator-customized content.
+        await fs.writeFile(promPath, '# OPERATOR CUSTOM PROMETHEUS — do not touch\n');
+
+        await runFinalize({
+          state: makeFullState(),
+          io,
+          envOut: envPath,
+          imageTag: '0.3.1',
+          loadBundledSouls: async () =>
+            Object.freeze({
+              orchestrator: 'orch\n', conductor: 'cond\n', theorist: 'theo\n',
+              tinkerer: 'tink\n', optimizer: 'opt\n', glue: 'glue\n',
+              skeptic: 'skep\n', crafter: 'craft\n', scribe: 'scribe\n',
+            }),
+          loadBundledPrometheusYaml: async () => 'WIZARD_DEFAULT_SHOULD_NOT_OVERWRITE',
+        });
+
+        // Operator's prometheus.yml is preserved.
+        const after = await fs.readFile(promPath, 'utf8');
+        expect(after).toBe('# OPERATOR CUSTOM PROMETHEUS — do not touch\n');
+      } finally {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('continues writing other artifacts when prometheus.yml loader fails (non-fatal)', async () => {
+      const io = makeEofIo();
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'finalize-promfail-'));
+      const envPath = path.join(tmpDir, '.env');
+
+      try {
+        await runFinalize({
+          state: makeFullState(),
+          io,
+          envOut: envPath,
+          imageTag: '0.3.1',
+          loadBundledSouls: async () =>
+            Object.freeze({
+              orchestrator: 'orch\n', conductor: 'cond\n', theorist: 'theo\n',
+              tinkerer: 'tink\n', optimizer: 'opt\n', glue: 'glue\n',
+              skeptic: 'skep\n', crafter: 'craft\n', scribe: 'scribe\n',
+            }),
+          loadBundledPrometheusYaml: async () => {
+            throw new Error('simulated broken-package failure');
+          },
+        });
+
+        // .env, compose, and souls all landed despite prometheus.yml load failing.
+        await expect(fs.stat(envPath)).resolves.toBeDefined();
+        await expect(fs.stat(path.join(tmpDir, 'docker-compose.yml'))).resolves.toBeDefined();
+        await expect(fs.stat(path.join(tmpDir, 'souls', 'orchestrator.md'))).resolves.toBeDefined();
+        // prometheus.yml was NOT written (loader threw).
+        await expect(fs.stat(path.join(tmpDir, 'prometheus.yml'))).rejects.toThrow();
+        // Operator-visible warning that explains what's broken.
+        expect(io.output()).toMatch(/Could not write .*prometheus\.yml/);
       } finally {
         await fs.rm(tmpDir, { recursive: true, force: true });
       }

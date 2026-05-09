@@ -183,6 +183,89 @@ export async function awaitInstallation(
   }
 }
 
+// ── awaitRepoInstallation ────────────────────────────────────────────────────
+
+/**
+ * Polls `GET /repos/{owner}/{repo}/installation` (App-JWT-authenticated) until
+ * the App can see the target repository, then returns the installation id.
+ *
+ * Distinct from {@link awaitInstallation}, which polls `/app/installations`
+ * and matches by `account.login`. That helper returns IMMEDIATELY for an App
+ * that's already installed somewhere with the same owner — useless for the
+ * "install existing Apps on an additional repo" flow because the existing
+ * installation is found before the operator has clicked through. This helper
+ * asks GitHub the more specific question: "is the App's installation visible
+ * from THIS repository?" — which only resolves to 200 once the operator has
+ * added the repo to the installation's repository-access list.
+ *
+ * Throws {@link InstallationTimeoutError} when `timeoutMs` elapses without a
+ * 200. 401 / 404 responses are treated as transient (the App is not yet
+ * installed on this repo, or the JWT just minted hasn't propagated yet).
+ * Other errors propagate unchanged.
+ */
+export async function awaitRepoInstallation(
+  app: ExchangedApp,
+  repo: RepoRef,
+  opts?: AwaitInstallationOptions,
+  _octokit?: Octokit,
+): Promise<{ installationId: number }> {
+  const intervalMs = opts?.intervalMs ?? DEFAULT_INTERVAL_MS;
+  const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const signal = opts?.signal;
+
+  const octokit =
+    _octokit ??
+    new Octokit({
+      authStrategy: createAppAuth,
+      auth: { appId: app.id, privateKey: app.pem },
+    });
+
+  // For the wait-loop URL, prefer the repo's manage page on the App's
+  // settings (operator can add the repo from there). The wizard's caller
+  // owns opening the URL; this helper just polls.
+  const probeUrl = `https://github.com/${repo.owner}/${repo.name}`;
+  const deadline = Date.now() + timeoutMs;
+
+  for (;;) {
+    if (signal?.aborted) {
+      throw asError(signal.reason, 'Aborted');
+    }
+    if (Date.now() >= deadline) {
+      throw new InstallationTimeoutError(probeUrl);
+    }
+
+    let installationId: number | null = null;
+    try {
+      const { data } = await octokit.apps.getRepoInstallation({
+        owner: repo.owner,
+        repo: repo.name,
+      });
+      installationId = data.id;
+    } catch (err) {
+      // 401 / 404 = "not yet visible from this repo". The propagation-lag
+      // 401 from manifest exchange is also subsumed here (the public-key-
+      // propagation message would arrive on a freshly-issued PEM). Treat
+      // both as transient — the deadline still bounds the wait.
+      const status =
+        err instanceof Error && 'status' in err &&
+        typeof (err as { status?: unknown }).status === 'number'
+          ? (err as { status: number }).status
+          : undefined;
+      if (status !== 401 && status !== 404) {
+        throw err;
+      }
+    }
+
+    if (installationId !== null) {
+      return { installationId };
+    }
+
+    const remaining = deadline - Date.now();
+    const wait = Math.max(0, Math.min(intervalMs, remaining));
+    await sleepWithSignal(wait, signal);
+  }
+}
+
 /**
  * Detects the GitHub-side propagation-lag 401 that follows manifest creation:
  *   401 + body `{"message": "Integration must generate a public key", ...}`.

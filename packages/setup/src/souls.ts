@@ -58,3 +58,30 @@ export async function loadBundledSouls(): Promise<Readonly<Record<BuiltinPersona
   );
   return Object.freeze(Object.fromEntries(entries) as Record<BuiltinPersona, string>);
 }
+
+/**
+ * Read the bundled `prometheus.yml` (the default Prometheus scrape config
+ * shipped with the in-tree compose). The wizard writes this alongside the
+ * generated `docker-compose.yml` so `docker compose --profile monitoring up`
+ * works without an extra config step.
+ *
+ * Same provenance as loadBundledSouls: copy-assets at build time copies
+ * `<repo-root>/prometheus.yml` into `dist/prometheus.yml`. A missing file
+ * here indicates a broken package, not a runtime config problem — surfaces
+ * as a thrown error with diagnostic context.
+ */
+const PROMETHEUS_YAML_PATH = join(__dirname, 'prometheus.yml');
+
+export async function loadBundledPrometheusYaml(): Promise<string> {
+  try {
+    return await readFile(PROMETHEUS_YAML_PATH, 'utf8');
+  } catch (err) {
+    const cause = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Bundled prometheus.yml missing at ${PROMETHEUS_YAML_PATH}. This indicates a ` +
+        `broken @agenti-fy/setup package — the build's copy-assets step should ` +
+        `have copied <repo-root>/prometheus.yml into dist/prometheus.yml. ` +
+        `Original error: ${cause}`,
+    );
+  }
+}

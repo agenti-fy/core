@@ -326,6 +326,7 @@ describe('smoke — full wizard end-to-end round-trip', () => {
           dryRun: false,
           envOut: path.join(tmpdir, '.env'),
           stateFile: undefined,
+          envIn: undefined,
           // Smoke test runs in a tmp dir; suppress the compose+souls write
           // so it doesn't leave artifacts the rest of the test cares about.
           noCompose: true,

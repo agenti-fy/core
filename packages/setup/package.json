@@ -1,6 +1,6 @@
 {
   "name": "@agenti-fy/setup",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Interactive setup wizard for agenti-fy. Registers nine GitHub Apps (one per built-in persona) via the App Manifest flow, installs them on the target repo, collects Anthropic credentials, and writes a ready-to-use .env. Generates a standalone docker-compose.yml + souls/ alongside the .env so operators can run `docker compose up` without cloning the source repo. Run with `npx @agenti-fy/setup init`.",
   "license": "MIT",
   "author": "agenti-fy contributors",
@@ -38,7 +38,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm copy-assets",
-    "copy-assets": "mkdir -p dist/souls && cp -f ../../souls/*.md dist/souls/",
+    "copy-assets": "mkdir -p dist/souls && cp -f ../../souls/*.md dist/souls/ && cp -f ../../prometheus.yml dist/prometheus.yml",
     "dev": "tsc -p tsconfig.json --watch",
     "start": "node dist/bin.js",
     "typecheck": "tsc -b"

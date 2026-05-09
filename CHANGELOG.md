@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-05-09
+
+### Added
+
+- **Wizard now writes `docker-compose.yml` with the monitoring stack present by default**, and bundles a default `prometheus.yml` alongside the compose. Earlier versions had a latent `includeMonitoring` flag that defaulted to false and was never wired to a CLI option, so wizard-generated compose files never carried the Prometheus + Grafana services — `docker compose --profile monitoring up` was a no-op for wizard-bundled deploys. The flag is gone; the monitoring services are always emitted, gated by the existing `profiles: [monitoring]` in each block (so `docker compose up` is unaffected; only `--profile monitoring` activates them). Operators get the in-tree compose's full feature surface from the wizard's output.
+- `prometheus.yml` is now copied from `<repo-root>/prometheus.yml` into the setup package at build time (`copy-assets`) and written next to the generated compose at wizard time. Refuses to overwrite an existing customization — operator edits are preserved.
+- **`agentify-setup install --repo <owner/name>`** subcommand. Adds an existing fleet's nine GitHub Apps to a different repository without re-registering them — operator runs the wizard once for one repo, then `install --repo other/repo` to extend the same Apps to additional repos. Reads App credentials from `<cwd>/.env` (or `--env-in <path>`), opens each App's installation-management URL in the browser, and polls `GET /repos/{owner}/{repo}/installation` (App-JWT-auth) until each App can see the new repo. The existing `.env` stays valid — same `installation_id`s now cover the new repo too. Exit 0 on full success, 1 if any persona times out (with the failed personas named).
+- New `--env-in <path>` flag for `agentify-setup install` (default: `<cwd>/.env`). The `install` subcommand needs a path to a previously-generated `.env`; this flag lets the operator point at one outside the current directory without `cd`'ing.
+- New `awaitRepoInstallation` helper in `packages/setup/src/install.ts` — distinct from the existing `awaitInstallation` which polls `/app/installations` and matches by owner. The new helper polls `GET /repos/{owner}/{repo}/installation` so it correctly returns only when the App's installation is visible from the *specific* target repo, rather than whatever existing installation matches the same account login.
+
 ## [0.3.5] - 2026-05-08
 
 ### Fixed
