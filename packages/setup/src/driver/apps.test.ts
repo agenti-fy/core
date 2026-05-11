@@ -174,6 +174,9 @@ function makeDeps(
         app: ExchangedApp,
         repo: unknown,
       ) => Promise<{ installationId: number }>,
+      // Stub out the inter-persona rate-limit pause — production sleeps
+      // 3.5 s between Apps, tests would take 28 s/run otherwise.
+      sleep: async (_ms: number) => {},
     };
   }
 
@@ -214,6 +217,40 @@ describe('runApps — happy path', () => {
     await runApps(deps);
 
     expect(server.close).toHaveBeenCalledOnce();
+  });
+
+  it('sleeps between successful Apps to avoid GitHub rate limits (n-1 times for n personas, ≥3000ms each)', async () => {
+    const sleepMock = vi.fn<(ms: number) => Promise<void>>(async () => {});
+    const { deps } = makeDeps();
+    await runApps({ ...deps, sleep: sleepMock });
+
+    // n personas → n-1 inter-persona pauses (no pause after the last).
+    expect(sleepMock).toHaveBeenCalledTimes(PERSONA_COUNT - 1);
+    for (const call of sleepMock.mock.calls) {
+      expect(call[0]).toBeGreaterThanOrEqual(3000);
+      expect(call[0]).toBeLessThanOrEqual(4000);
+    }
+  });
+
+  it('does not sleep before the first persona or after the last', async () => {
+    const sleepOrder: ('sleep' | 'exchange')[] = [];
+    const sleepMock = vi.fn<(ms: number) => Promise<void>>(async () => {
+      sleepOrder.push('sleep');
+    });
+    const { deps, exchangeMock } = makeDeps();
+    exchangeMock.mockImplementation((_code: string) => {
+      sleepOrder.push('exchange');
+      const n = sleepOrder.filter((s) => s === 'exchange').length - 1;
+      const persona = PERSONAS[n] ?? 'orchestrator';
+      return Promise.resolve(makeExchanged(persona, n));
+    });
+
+    await runApps({ ...deps, sleep: sleepMock });
+
+    // First event must be an exchange, last event must be an exchange:
+    // sleep only appears strictly between exchanges.
+    expect(sleepOrder[0]).toBe('exchange');
+    expect(sleepOrder[sleepOrder.length - 1]).toBe('exchange');
   });
 
   it('stages each persona on the server before opening the browser', async () => {

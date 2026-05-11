@@ -374,6 +374,9 @@ describe('smoke — full wizard end-to-end round-trip', () => {
               callbackServerFactory: () => CallbackServer.listen(10_000),
               // No-op: we don't need per-persona checkpoint files in the smoke test.
               saveState: async () => { /* checkpoint no-op */ },
+              // No-op: bypass the 3.5 s inter-persona rate-limit pause so
+              // the smoke test doesn't sleep ~28 s waiting for nothing.
+              sleep: async () => {},
             }),
 
           runAnthropic: async () => ({

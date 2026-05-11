@@ -90,6 +90,31 @@ type AwaitInstallation = (
   repo: RepoRef,
 ) => Promise<{ installationId: number }>;
 
+/**
+ * Sleep helper used to space successive App-creation iterations apart,
+ * so the wizard doesn't trip GitHub's anti-abuse rate limits on the
+ * manifest-conversion endpoint when nine Apps are created back-to-back.
+ *
+ * The production default sleeps for {@link APP_CREATION_DELAY_MS} between
+ * Apps; tests inject a no-op (`async () => {}`) so the suite stays fast.
+ */
+type Sleep = (ms: number) => Promise<void>;
+
+/**
+ * Pause inserted between successful App creations so the wizard stays
+ * under GitHub's anti-abuse rate limits on `POST /app-manifests/:code/
+ * conversions` and `GET /app/installations`. 3.5 s sits in the middle of
+ * the 3–4 s window we want; the pause runs only after a successful
+ * checkpoint, never before the first persona, never after the last.
+ *
+ * Skips (resumed-state pass-throughs and user-skipped personas) do not
+ * count — they don't hit GitHub, so adding a pause after them just wastes
+ * the operator's time.
+ */
+const APP_CREATION_DELAY_MS = 3500;
+
+const defaultSleep: Sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 // ── AppsDeps ──────────────────────────────────────────────────────────────────
 
 /**
@@ -137,6 +162,12 @@ export interface AppsDeps {
   exchangeManifest?: ExchangeManifest;
   /** Override the installation poller (default: `awaitInstallation`). */
   awaitInstallation?: AwaitInstallation;
+  /**
+   * Override the inter-persona sleep helper. Default sleeps for
+   * {@link APP_CREATION_DELAY_MS} between successful App creations to
+   * avoid GitHub rate limits; tests inject a no-op.
+   */
+  sleep?: Sleep;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -209,6 +240,7 @@ export async function runApps(deps: AppsDeps): Promise<Partial<WizardState>> {
   const awaitInstallFn: AwaitInstallation =
     deps.awaitInstallation ??
     ((app, repo) => defaultAwaitInstallation(app, repo));
+  const sleepFn: Sleep = deps.sleep ?? defaultSleep;
 
   const { prefix, repo, ownerType } = state;
 
@@ -328,6 +360,17 @@ export async function runApps(deps: AppsDeps): Promise<Partial<WizardState>> {
         personas: updatedPersonas,
       };
       await saveFn(stateForSave(checkpointState, passphrase));
+
+      // Pause before the next persona to avoid GitHub's anti-abuse rate
+      // limit on consecutive App-manifest conversions. Skipped after the
+      // last persona (nothing to wait for) and not reached by skip/abort
+      // paths above (they `continue` before this point).
+      if (i < WIZARD_PERSONAS.length - 1) {
+        io.stdout.write(
+          `  (pausing ${APP_CREATION_DELAY_MS / 1000}s before next App to avoid GitHub rate limits)\n`,
+        );
+        await sleepFn(APP_CREATION_DELAY_MS);
+      }
     }
   } finally {
     // Always close the server, even on error or PromptCancelled.

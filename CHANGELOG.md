@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-05-11
+
+### Changed
+
+- **Setup wizard now pauses 3.5 s between successful App creations** to stay under GitHub's anti-abuse rate limits on `POST /app-manifests/:code/conversions` and the subsequent installation polling. Without the pause, registering all nine Apps back-to-back can trip the limit and stall mid-wizard; the operator's only recovery is a `resume` after the cooldown. The pause runs only between *successful* creations — skipped personas (resumed state, user-elected skip) don't hit GitHub and don't pause. A `(pausing 3.5s before next App to avoid GitHub rate limits)` line prints in the wizard so the wait doesn't look like a freeze. Total wizard runtime is up by ~28 s (8 × 3.5 s) over previous versions; in exchange the nine-App registration is no longer susceptible to the secondary rate limit.
+
 ## [0.3.6] - 2026-05-09
 
 ### Added
