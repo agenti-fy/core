@@ -148,16 +148,17 @@ export async function awaitInstallation(
     try {
       ({ data: installations } = await octokit.apps.listInstallations());
     } catch (err) {
-      if (isPublicKeyNotYetPropagated(err)) {
+      if (isTransientGitHubError(err)) {
         // GitHub propagation lag between the manifest exchange and the App's
-        // public key being available to the JWT verifier. The PEM we hold IS
-        // the right key; GitHub's auth side just hasn't seen it yet. The
-        // 401 message is "Integration must generate a public key" — confusing
-        // because the key exists; GitHub means "we don't yet have a public
-        // key registered for this App on the verifier path." Propagation is
-        // typically a few seconds. Treat as transient: sleep one interval
-        // and retry. The deadline still bounds the wait, so genuine
-        // misconfigurations surface as InstallationTimeoutError.
+        // record being consistent on the read path. Observed shapes include
+        // 401 "Integration must generate a public key" (verifier hasn't seen
+        // the App's public key yet), other 401 variants right after creation,
+        // and 404s from the App's API plane lagging the create. Cached/edge
+        // 5xx responses fall in the same bucket. Treat any of these as
+        // transient: sleep one interval and retry. The deadline still bounds
+        // the wait, so a genuine misconfiguration (wrong PEM, revoked App,
+        // clock skew) surfaces as InstallationTimeoutError instead of a
+        // misleading immediate 401.
         await sleepWithSignal(intervalMs, signal);
         continue;
       }
@@ -242,16 +243,11 @@ export async function awaitRepoInstallation(
       });
       installationId = data.id;
     } catch (err) {
-      // 401 / 404 = "not yet visible from this repo". The propagation-lag
-      // 401 from manifest exchange is also subsumed here (the public-key-
-      // propagation message would arrive on a freshly-issued PEM). Treat
-      // both as transient — the deadline still bounds the wait.
-      const status =
-        err instanceof Error && 'status' in err &&
-        typeof (err as { status?: unknown }).status === 'number'
-          ? (err as { status: number }).status
-          : undefined;
-      if (status !== 401 && status !== 404) {
+      // 401 / 404 = "not yet visible from this repo"; 5xx = transient edge
+      // / cache error right after manifest creation. The deadline still
+      // bounds the wait, so a genuinely missing installation eventually
+      // surfaces as InstallationTimeoutError.
+      if (!isTransientGitHubError(err)) {
         throw err;
       }
     }
@@ -267,21 +263,32 @@ export async function awaitRepoInstallation(
 }
 
 /**
- * Detects the GitHub-side propagation-lag 401 that follows manifest creation:
- *   401 + body `{"message": "Integration must generate a public key", ...}`.
- * Octokit's RequestError carries the status as `err.status` and the body's
- * `message` field surfaces in `err.message`. Both the 401 status AND the key-
- * specific phrase are required to avoid misclassifying legitimate auth errors
- * (wrong PEM, revoked App, clock skew JWT rejection, etc.) as transient.
+ * Returns the numeric HTTP status when `err` looks like an Octokit
+ * `RequestError` (which exposes `status` directly on the error), or
+ * `undefined` for plain `Error`s and network-level failures.
  */
-function isPublicKeyNotYetPropagated(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const status =
-    'status' in err && typeof (err as { status?: unknown }).status === 'number'
-      ? (err as { status: number }).status
-      : undefined;
-  if (status !== 401) return false;
-  return /must generate a public key/i.test(err.message);
+function httpStatus(err: unknown): number | undefined {
+  if (!(err instanceof Error)) return undefined;
+  return 'status' in err && typeof (err as { status?: unknown }).status === 'number'
+    ? (err as { status: number }).status
+    : undefined;
+}
+
+/**
+ * Detects GitHub responses that are transient in the immediate-post-create
+ * window: 401 (verifier hasn't caught up to a freshly-issued PEM), 404 (App
+ * not yet consistent on the read path), and 5xx (cached/edge errors).
+ *
+ * Genuine misconfigurations (wrong PEM, revoked App, clock-skew JWT
+ * rejection) ALSO surface as 401 here. We accept that ambiguity because the
+ * deadline still bounds the wait — a permanently broken App times out with
+ * an InstallationTimeoutError, while a real propagation-lag 401 disappears
+ * within a few seconds and the poll continues.
+ */
+function isTransientGitHubError(err: unknown): boolean {
+  const status = httpStatus(err);
+  if (status === undefined) return false;
+  return status === 401 || status === 404 || (status >= 500 && status < 600);
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

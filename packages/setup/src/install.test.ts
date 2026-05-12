@@ -278,15 +278,20 @@ describe('awaitInstallation — timeout', () => {
   });
 });
 
-describe('awaitInstallation — public-key propagation lag', () => {
+describe('awaitInstallation — transient-error retry', () => {
   /**
-   * Stub that returns 401 "Integration must generate a public key" for the
-   * first N polls, then succeeds with `installations` from the (N+1)th call
-   * onward. Mimics the GitHub-side propagation lag right after a manifest
-   * exchange: the App's public key isn't visible to the JWT verifier yet,
-   * so listInstallations fails with 401 + that specific message.
+   * Build a stub that returns the given `status` (with an arbitrary message
+   * body) for the first `failures` calls, then succeeds with
+   * `eventualInstallations` from call `failures + 1` onward.
+   *
+   * Mimics GitHub propagation lag right after a manifest exchange — the App
+   * is created but the read path (verifier, installations index) hasn't
+   * caught up yet, so calls fail with various 401/404/5xx shapes before
+   * stabilising.
    */
-  function makeOctokitWithPubkeyLag(
+  function makeOctokitWithFailures(
+    status: number,
+    message: string,
     failures: number,
     eventualInstallations: Array<StubInstallation>,
   ): Octokit {
@@ -301,9 +306,7 @@ describe('awaitInstallation — public-key propagation lag', () => {
         if (callCount <= failures) {
           // Octokit's RequestError surfaces the body's message field on
           // err.message and exposes the HTTP status as err.status.
-          const err = Object.assign(new Error('Integration must generate a public key'), {
-            status: 401,
-          });
+          const err = Object.assign(new Error(message), { status });
           throw err;
         }
         return {
@@ -319,8 +322,13 @@ describe('awaitInstallation — public-key propagation lag', () => {
     return octokit;
   }
 
-  it('treats 401 "Integration must generate a public key" as transient and retries', async () => {
-    const octokit = makeOctokitWithPubkeyLag(2, [{ id: 99, account: { login: 'my-org' } }]);
+  it('retries on 401 "Integration must generate a public key" and resolves once the App settles', async () => {
+    const octokit = makeOctokitWithFailures(
+      401,
+      'Integration must generate a public key',
+      2,
+      [{ id: 99, account: { login: 'my-org' } }],
+    );
 
     const result = await awaitInstallation(
       SAMPLE_APP,
@@ -332,9 +340,72 @@ describe('awaitInstallation — public-key propagation lag', () => {
     expect(result.installationId).toBe(99);
   });
 
-  it('still surfaces InstallationTimeoutError if the propagation lag persists past the deadline', async () => {
-    // Always-failing pubkey-lag → never recovers within timeoutMs.
-    const octokit = makeOctokitWithPubkeyLag(Infinity, []);
+  it('retries on other 401 shapes (JWT-decode, generic auth) — same propagation-lag bucket', async () => {
+    // Right after manifest creation GitHub's auth plane briefly returns 401s
+    // with assorted messages (JWT decode failures, generic "Bad credentials").
+    // Operationally these clear within seconds, so the wizard treats every
+    // 401 as transient and lets the deadline bound the wait.
+    const octokit = makeOctokitWithFailures(
+      401,
+      'A JSON web token could not be decoded',
+      2,
+      [{ id: 99, account: { login: 'my-org' } }],
+    );
+
+    const result = await awaitInstallation(
+      SAMPLE_APP,
+      REPO_WITHOUT_IDS,
+      { intervalMs: 1, timeoutMs: 30_000 },
+      octokit,
+    );
+
+    expect(result.installationId).toBe(99);
+  });
+
+  it('retries on 404 responses (App not yet visible on read path)', async () => {
+    const octokit = makeOctokitWithFailures(
+      404,
+      'Not Found',
+      2,
+      [{ id: 77, account: { login: 'my-org' } }],
+    );
+
+    const result = await awaitInstallation(
+      SAMPLE_APP,
+      REPO_WITHOUT_IDS,
+      { intervalMs: 1, timeoutMs: 30_000 },
+      octokit,
+    );
+
+    expect(result.installationId).toBe(77);
+  });
+
+  it('retries on 5xx responses (cached / edge errors right after creation)', async () => {
+    const octokit = makeOctokitWithFailures(
+      502,
+      'Bad Gateway',
+      2,
+      [{ id: 55, account: { login: 'my-org' } }],
+    );
+
+    const result = await awaitInstallation(
+      SAMPLE_APP,
+      REPO_WITHOUT_IDS,
+      { intervalMs: 1, timeoutMs: 30_000 },
+      octokit,
+    );
+
+    expect(result.installationId).toBe(55);
+  });
+
+  it('still surfaces InstallationTimeoutError when the failure persists past the deadline', async () => {
+    // Always-failing 401 → never recovers within timeoutMs.
+    const octokit = makeOctokitWithFailures(
+      401,
+      'Integration must generate a public key',
+      Number.POSITIVE_INFINITY,
+      [],
+    );
     const promise = awaitInstallation(
       SAMPLE_APP,
       REPO_WITHOUT_IDS,
@@ -345,18 +416,17 @@ describe('awaitInstallation — public-key propagation lag', () => {
     await expect(promise).rejects.toBeInstanceOf(InstallationTimeoutError);
   });
 
-  it('does NOT swallow other 401s (wrong PEM, revoked App) — those propagate', async () => {
-    // Different 401 message → must NOT match the propagation-lag classifier.
+  it('does not retry network-level failures with no HTTP status', async () => {
+    // A plain Error without a numeric `status` is not a GitHub HTTP response
+    // shape — it's something more fundamental (DNS, ECONNREFUSED, TLS).
+    // Surface it immediately so the caller can react.
     const octokit = new Octokit();
     octokit.hook.wrap('request', async (_request, options) => {
       if (
         typeof options.url === 'string' &&
         options.url.includes('/app/installations')
       ) {
-        const err = Object.assign(new Error('A JSON web token could not be decoded'), {
-          status: 401,
-        });
-        throw err;
+        throw new Error('connect ECONNREFUSED 127.0.0.1:443');
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return {} as any;
@@ -369,35 +439,7 @@ describe('awaitInstallation — public-key propagation lag', () => {
       octokit,
     );
     void promise.catch(() => {});
-    await expect(promise).rejects.toThrow(/JSON web token/);
-  });
-
-  it('does NOT swallow non-401 errors with the same message', async () => {
-    // A 500 with the pubkey phrase shouldn't be treated as transient — it's
-    // a server error category that warrants surfacing.
-    const octokit = new Octokit();
-    octokit.hook.wrap('request', async (_request, options) => {
-      if (
-        typeof options.url === 'string' &&
-        options.url.includes('/app/installations')
-      ) {
-        const err = Object.assign(new Error('Integration must generate a public key'), {
-          status: 500,
-        });
-        throw err;
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return {} as any;
-    });
-
-    const promise = awaitInstallation(
-      SAMPLE_APP,
-      REPO_WITHOUT_IDS,
-      { intervalMs: 1, timeoutMs: 30_000 },
-      octokit,
-    );
-    void promise.catch(() => {});
-    await expect(promise).rejects.toThrow(/public key/);
+    await expect(promise).rejects.toThrow(/ECONNREFUSED/);
   });
 });
 

@@ -23,7 +23,13 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { BUILTIN_PERSONAS } from '@agenti-fy/shared';
 import type { CliArgs } from './cli.js';
-import { PromptCancelled, printErr, type IoStreams } from './prompts.js';
+import {
+  PromptCancelled,
+  printErr,
+  printOk,
+  askYesNo,
+  type IoStreams,
+} from './prompts.js';
 import { loadState, saveState, stateForSave, type WizardState, type StateOptions } from './state.js';
 import { getSessionPassphrase, type GetSessionPassphraseOpts } from './passphrase.js';
 import { runPreamble, type GhExec } from './driver/preamble.js';
@@ -167,6 +173,16 @@ function stateFilePath(prefix: string, dir?: string): string {
   return path.join(resolved, `setup-${prefix}.json`);
 }
 
+/**
+ * Count personas that already have full credentials in a loaded state.
+ * Used to decide whether a saved state file represents "real progress"
+ * worth resuming from — a freshly-built state with only preamble fields
+ * filled in returns 0 here, in which case init won't prompt.
+ */
+function countCompletedPersonas(state: WizardState): number {
+  return Object.values(state.personas).filter((v) => v != null).length;
+}
+
 // ── run ───────────────────────────────────────────────────────────────────────
 
 /**
@@ -264,10 +280,13 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
     // ── Load initial state ──────────────────────────────────────────────────
 
     // For resume we attempt to pre-load state so the preamble can confirm existing
-    // values.  For init we always start fresh (ignoring saved credentials).
+    // values.  For init we always start fresh (ignoring saved credentials) at
+    // this stage — after the preamble resolves the prefix we re-attempt the
+    // load below and prompt the operator to resume if progress exists.
     if (args.subcommand === 'resume') {
       // The prefix is needed to locate the state file; use the --prefix flag when
-      // provided; otherwise preamble will ask and we skip pre-loading here.
+      // provided; otherwise preamble will ask and we re-attempt the load
+      // after the preamble step.
       const lookupPrefix = args.prefix;
       if (lookupPrefix) {
         state = await loadFn(lookupPrefix, { ...stateOpts, passphrase });
@@ -280,6 +299,63 @@ export async function run(args: CliArgs, deps?: RunDeps): Promise<number> {
       ? { state, io, spawn }
       : { state, io };
     const preambleResult = await preambleFn(preambleOpts);
+
+    // ── Late state load (post-preamble) ─────────────────────────────────────
+    //
+    // If we still don't have state, look on disk now that the prefix is
+    // resolved. This handles two cases the prior `init`-overwrites-progress
+    // shape did not:
+    //   - `agentify-setup resume` invoked WITHOUT `--prefix` — the prefix
+    //     comes from the preamble prompt, so the file lookup couldn't happen
+    //     earlier. Pick the saved state up automatically.
+    //   - `agentify-setup init` re-run after a crash partway through the
+    //     App-creation loop — the saved state for the same prefix represents
+    //     completed work the operator probably wants to preserve. Prompt
+    //     before reusing it, but default to yes.
+    //
+    // For `verify` we skip the prompt: verify doesn't touch the App loop and
+    // operates on .env, so the on-disk checkpoint is irrelevant.
+    if (state === null && args.subcommand !== 'verify') {
+      const existing = await loadFn(preambleResult.prefix, {
+        ...stateOpts,
+        passphrase,
+      });
+      if (existing !== null) {
+        const completed = countCompletedPersonas(existing);
+        if (args.subcommand === 'resume' || completed === 0) {
+          // Resume: take it without asking. Init with a saved file that has
+          // no persona progress (preamble-only checkpoint): silently re-use,
+          // since there's nothing meaningful to preserve or discard.
+          state = existing;
+          if (completed > 0) {
+            printOk(
+              `Resuming from saved progress (${completed}/${BUILTIN_PERSONAS.length} personas complete).`,
+              io,
+            );
+          }
+        } else {
+          // init with real progress on disk — ask before overwriting.
+          io.stdout.write(
+            `\nFound saved progress for "${preambleResult.prefix}" — ` +
+              `${completed}/${BUILTIN_PERSONAS.length} personas already created.\n`,
+          );
+          const resume = await askYesNo(
+            'Resume from saved progress?',
+            { default: true },
+            io,
+          );
+          if (resume) {
+            state = existing;
+            printOk('Resuming from saved progress.', io);
+          } else {
+            io.stdout.write(
+              '  Starting fresh — previously saved credentials for ' +
+                `"${preambleResult.prefix}" will be overwritten.\n`,
+            );
+          }
+        }
+      }
+    }
 
     // Build or update the running state.
     if (state === null) {

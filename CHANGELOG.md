@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-05-12
+
+### Fixed
+
+- **Setup wizard now retries on transient 401/404/5xx from GitHub during installation polling.** Right after the App-manifest exchange, GitHub's read path is briefly inconsistent — `GET /app/installations` calls (JWT-auth'd with the freshly-issued PEM) can return 401 with assorted messages, 404, or 5xx for a few seconds before stabilising. Previously only the specific 401 "Integration must generate a public key" message was treated as transient; every other 401/404 surfaced immediately and stalled the wizard. The retry policy is now broader: any 401/404/5xx is treated as propagation lag and re-polled until the existing 10-minute deadline. Genuine misconfigurations (wrong PEM, revoked App, clock-skew JWT rejection) still surface — they surface as `InstallationTimeoutError` after the deadline rather than as a misleading instant 401. Implementation: `isPublicKeyNotYetPropagated` is replaced with a status-based `isTransientGitHubError` (401/404/5xx) in `packages/setup/src/install.ts`; `awaitRepoInstallation` (used by `agentify-setup install`) now uses the same helper so 5xx is covered there too. Network-level errors with no HTTP status still bubble immediately.
+- **`agentify-setup init` and `resume` now correctly recover from a crashed prior run.** A late state-load step runs after `runPreamble` resolves the prefix:
+  - `resume` invoked without `--prefix` previously couldn't locate the state file (the prefix only becomes known mid-preamble), silently started a fresh run, and overwrote the saved checkpoint. It now picks up the saved state automatically once the prefix is known.
+  - `init` re-run after a crash partway through the App-creation loop used to wipe the on-disk checkpoint and start over. It now detects the saved file, prints `Found saved progress for "<prefix>" — N/9 personas already created.`, and prompts `Resume from saved progress? [Y/n]` (defaulting to yes). Decline goes back to the previous "start fresh, overwrite" behaviour. Preamble-only checkpoints with no completed personas are picked up silently — no useful state to preserve, no operator interruption.
+  - `verify` is unaffected (operates on `.env`, not the checkpoint).
+
 ## [0.3.7] - 2026-05-11
 
 ### Changed

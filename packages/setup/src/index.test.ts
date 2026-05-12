@@ -164,10 +164,16 @@ describe('run — init', () => {
     expect(code).toBe(0);
   });
 
-  it('does not call loadState (init always starts fresh)', async () => {
-    const deps = makeDeps();
+  it('attempts to load state after the preamble (so a crashed init can be resumed)', async () => {
+    // No saved state exists for this prefix — loadState returns null and
+    // init proceeds as a fresh run. The point of this test is that the
+    // lookup ITSELF happens with the resolved prefix, since that's the
+    // hook that lets the operator pick a half-done run back up by simply
+    // re-running `init`.
+    const loadFn = vi.fn(async () => null);
+    const deps = makeDeps({ loadState: loadFn });
     await run(args('init'), deps);
-    expect(deps.loadState).not.toHaveBeenCalled();
+    expect(loadFn).toHaveBeenCalledWith('test-prefix', { passphrase: 'fixed-test-passphrase' });
   });
 
   it('calls preamble, then apps, then anthropic, then finalize in order', async () => {
@@ -257,13 +263,15 @@ describe('run — resume', () => {
     expect(loadFn).toHaveBeenCalledWith('test-prefix', { passphrase: 'fixed-test-passphrase' });
   });
 
-  it('does not load state when --prefix is absent', async () => {
+  it('loads state after the preamble when --prefix is absent', async () => {
+    // resume without --prefix used to silently start a fresh run. The fix
+    // is to re-attempt loadState after the preamble resolves the prefix.
     const loadFn = vi.fn(async () => null);
     const deps = makeDeps({ loadState: loadFn });
 
     await run(args('resume'), deps);
 
-    expect(loadFn).not.toHaveBeenCalled();
+    expect(loadFn).toHaveBeenCalledWith('test-prefix', { passphrase: 'fixed-test-passphrase' });
   });
 
   it('passes loaded state into preamble', async () => {
@@ -292,6 +300,147 @@ describe('run — resume', () => {
 
     await run(args('resume'), deps);
     expect(order).toEqual(['preamble', 'apps', 'anthropic', 'finalize']);
+  });
+
+  it('feeds late-loaded state into the apps phase when --prefix is absent', async () => {
+    // A state file with one persona already complete sits on disk. The user
+    // runs `resume` without --prefix, so the load can only happen after the
+    // preamble. The apps phase must receive the loaded state (with the one
+    // pre-existing persona present) — not a freshly-built skeleton.
+    const onePersonaCreds = {
+      appId: 1001,
+      slug: 'test-prefix-orchestrator',
+      name: 'test-prefix-orchestrator',
+      htmlUrl: 'https://github.com/apps/test-prefix-orchestrator',
+      pem: '-----BEGIN RSA PRIVATE KEY-----\nMOCK\n-----END RSA PRIVATE KEY-----\n',
+      clientId: 'Iv1.x',
+      clientSecret: 'cs',
+      webhookSecret: 'ws',
+      installationId: 2001,
+      githubUser: 'test-prefix-orchestrator[bot]',
+    };
+    const onDisk: WizardState = {
+      ...MINIMAL_STATE,
+      personas: { ...MINIMAL_STATE.personas, orchestrator: onePersonaCreds },
+    };
+    let appsState: WizardState | null = null;
+    const deps = makeDeps({
+      loadState: vi.fn(async () => onDisk),
+      runApps: vi.fn(async (opts) => { appsState = opts.state; return {}; }),
+    });
+
+    await run(args('resume'), deps);
+
+    expect(appsState).not.toBeNull();
+    expect(appsState!.personas.orchestrator).toEqual(onePersonaCreds);
+  });
+});
+
+// ── init — resume-on-existing-state prompt ────────────────────────────────────
+
+/**
+ * Build an IoStreams pair pre-loaded with a single line on stdin, so an
+ * `askYesNo` prompt inside `run()` resolves without test-side wiring.
+ *
+ * Modelled on the `makeIo` helper in apps.test.ts (line-by-line drip via
+ * setImmediate) but kept lightweight here because we only need one answer.
+ */
+function makeIoWithInput(line: string): IoStreams & { output: () => string } {
+  const stdin = new PassThrough();
+  const stdout = new PassThrough();
+  const chunks: Buffer[] = [];
+  stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+  setImmediate(() => {
+    stdin.write(`${line}\n`);
+    stdin.end();
+  });
+  return { stdin, stdout, output: () => Buffer.concat(chunks).toString('utf8') };
+}
+
+/** PersonaCreds shape sufficient for the resume-prompt tests. */
+const RESUME_PROMPT_CREDS = {
+  appId: 1001,
+  slug: 'test-prefix-orchestrator',
+  name: 'test-prefix-orchestrator',
+  htmlUrl: 'https://github.com/apps/test-prefix-orchestrator',
+  pem: '-----BEGIN RSA PRIVATE KEY-----\nMOCK\n-----END RSA PRIVATE KEY-----\n',
+  clientId: 'Iv1.x',
+  clientSecret: 'cs',
+  webhookSecret: 'ws',
+  installationId: 2001,
+  githubUser: 'test-prefix-orchestrator[bot]',
+};
+
+describe('run — init resume-on-existing-state', () => {
+  it('prompts and reuses saved state when init runs over a crashed prior init', async () => {
+    const onDisk: WizardState = {
+      ...MINIMAL_STATE,
+      personas: { ...MINIMAL_STATE.personas, orchestrator: RESUME_PROMPT_CREDS },
+    };
+    const io = makeIoWithInput('y');
+    let appsState: WizardState | null = null;
+    const deps: TestDeps = {
+      io,
+      savedStates: [],
+      runPreamble: stubPreamble(),
+      runApps: vi.fn(async (opts) => { appsState = opts.state; return {}; }),
+      runAnthropic: stubPhase(),
+      runFinalize: stubFinalize(),
+      runVerify: stubVerify(),
+      loadState: vi.fn(async () => onDisk),
+      saveState: vi.fn(async (_state: WizardState) => {}),
+      passphraseProvider: vi.fn(async () => 'fixed-test-passphrase'),
+    };
+
+    const code = await run(args('init'), deps);
+    expect(code).toBe(0);
+
+    // The apps phase saw the loaded persona — the prior progress was preserved.
+    expect(appsState).not.toBeNull();
+    expect(appsState!.personas.orchestrator).toEqual(RESUME_PROMPT_CREDS);
+
+    // The prompt was actually surfaced to the user.
+    expect(io.output()).toMatch(/Resume from saved progress/i);
+  });
+
+  it('starts fresh when the operator declines the resume prompt', async () => {
+    const onDisk: WizardState = {
+      ...MINIMAL_STATE,
+      personas: { ...MINIMAL_STATE.personas, orchestrator: RESUME_PROMPT_CREDS },
+    };
+    const io = makeIoWithInput('n');
+    let appsState: WizardState | null = null;
+    const deps: TestDeps = {
+      io,
+      savedStates: [],
+      runPreamble: stubPreamble(),
+      runApps: vi.fn(async (opts) => { appsState = opts.state; return {}; }),
+      runAnthropic: stubPhase(),
+      runFinalize: stubFinalize(),
+      runVerify: stubVerify(),
+      loadState: vi.fn(async () => onDisk),
+      saveState: vi.fn(async (_state: WizardState) => {}),
+      passphraseProvider: vi.fn(async () => 'fixed-test-passphrase'),
+    };
+
+    await run(args('init'), deps);
+
+    // Fresh skeleton — orchestrator slot is reset.
+    expect(appsState).not.toBeNull();
+    expect(appsState!.personas.orchestrator).toBeUndefined();
+  });
+
+  it('does not prompt when the saved state has no completed personas', async () => {
+    // A preamble-only checkpoint exists on disk (no persona slots filled).
+    // Reusing it is harmless and prompts would be unnecessary noise, so the
+    // wizard should silently pick it up.
+    const onDisk: WizardState = { ...MINIMAL_STATE };
+    const deps = makeDeps({ loadState: vi.fn(async () => onDisk) });
+
+    await run(args('init'), deps);
+
+    // The prompt string must not appear in stdout.
+    expect(deps.io.output()).not.toMatch(/Resume from saved progress/i);
   });
 });
 

@@ -65,7 +65,7 @@ x-agent-env: &agent-env
   KB_ENTRY_MAX_BYTES: ${KB_ENTRY_MAX_BYTES:-1024}
 
 x-agent-defaults: &agent-defaults
-  image: agentify/agent:0.3.7
+  image: agentify/agent:0.3.8
   restart: unless-stopped
   deploy:
     resources:
@@ -86,7 +86,7 @@ services:
     build:
       context: .
       dockerfile: packages/coordinator/Dockerfile
-    image: agentify/coordinator:0.3.7
+    image: agentify/coordinator:0.3.8
     restart: unless-stopped
     environment:
       # GitHub App.
@@ -142,7 +142,7 @@ services:
       start_period: 10s
 
   # The first agent service carries the build: stanza; the rest reuse the
-  # resulting agentify/agent:0.3.7 image via the *agent-defaults anchor.
+  # resulting agentify/agent:0.3.8 image via the *agent-defaults anchor.
   # Routing requires one container per built-in persona — different methods
   # are handled by different personas (planner ≠ implementer ≠ reviewer ≠ …).
   orchestrator:
